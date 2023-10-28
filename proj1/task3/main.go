@@ -35,11 +35,11 @@ func main() {
 }
 
 const modulate_duration = 1.0 // 1sec
-const zero_freq = 3000.0
-const one_freq = 20000.0
+const zero_freq = 40000.0
+const one_freq = 80000.0
 
 func modulate_bit(b bool, sampleRate float64) []float32 {
-	sampleNum := int(math.Ceil(modulate_duration / sampleRate))
+	sampleNum := int(math.Ceil(modulate_duration * sampleRate))
 	result := make([]float32, sampleNum)
 
 	freq := zero_freq
@@ -100,24 +100,48 @@ func do_4b5b(message BitString) BitString {
 	return out
 }
 
-func modulate(message BitString, sampleRate float64) {
+func process_bits(message BitString, sampleRate float64, sig chan bool) func([][]float32) {
 	one_modulated := modulate_bit(true, sampleRate)
 	zero_modulated := modulate_bit(false, sampleRate)
-	out := make([]float32, len(one_modulated))
-	stream, err := portaudio.OpenDefaultStream(0, 1, sampleRate, 0, len(out), &out)
-	chk(err)
-	defer stream.Close()
-
-	chk(stream.Start())
-	defer stream.Stop()
-	for _, bit := range(message) {
-		if bit == 1 {
-				copy(out, one_modulated)
+	frame_id := 0.0
+	return func (out [][]float32) {
+		bit_index := int(frame_id / sampleRate)
+		if bit_index >= len(message) {
+			sig <- true
 		} else {
-				copy(out, zero_modulated)
+			in_frame_delta := math.Mod(frame_id, sampleRate)
+			out_offset := 0
+			if sampleRate - in_frame_delta < 
+			for ; sampleRate - in_frame_delta < float64(len(out[0]) - out_offset); {
+				copy(out[out_offset:out_offset])
+
+			}
+			frame_id += len(out)
 		}
-		chk(stream.Write())
+
+		// fmt.Printf("Modulated as %v\n", out[0])
+		// if offset >= len(message) {
+		// 	sig <- true
+		// } else {
+		// 	fmt.Printf("Playing %d\n", message[offset])
+		// 	if message[offset] == 1 {
+		// 		copy(out[0], one_modulated)
+		// 	} else {
+		// 		copy(out[0], zero_modulated)
+		// 	}
+		// 	fmt.Printf("Modulated as %v\n", out[0])
+		// }
 	}
+}
+
+func modulate(message BitString, sampleRate float64) {
+	fmt.Printf("Trying to modulate %v", message)
+	stop := make(chan bool)
+	stream, err := portaudio.OpenDefaultStream(0, 1, sampleRate, 0, process_bits(message, sampleRate, stop))
+	chk(err)
+	stream.Start()
+	<-stop 
+	stream.Stop()
 } 
 
 func demodulate(message []float64) BitString {
