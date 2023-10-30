@@ -45,7 +45,7 @@ func main() {
 	modulate(c, do_4b5b(msg), opts.SampleRate)
 }
 
-type ChanSound struct {
+type DataSig struct {
 	data BitString
 	low []float32
 	high []float32
@@ -53,7 +53,7 @@ type ChanSound struct {
 	sampleRate int
 }
 
-func (c *ChanSound) Read(buf []byte) (int, error) {
+func (c *DataSig) Read(buf []byte) (int, error) {
 	sample_len := len(c.high)
 	index := c.offset / sample_len
 	if index >= len(c.data) {
@@ -85,6 +85,40 @@ func (c *ChanSound) Read(buf []byte) (int, error) {
 	return len(buf) / 4 * 4, nil
 }
 
+// uses a linear chirp here
+// f(t) = sin(2pi ((c / 2)t^2 + f0t) )
+const preamble_duration = 1000 * time.Millisecond
+const preamble_start_freq = 500.0
+const preamble_final_freq = 3000.0
+type PreambleSig struct {
+	// phase float64
+	offset int
+	sampleRate int
+	// phaseDelta float64
+}
+
+func (p *PreambleSig) Read(buf []byte) (int, error) {
+	chirp_rate := (preamble_final_freq - preamble_start_freq) / preamble_duration.Seconds()
+	length := p.sampleRate * int(preamble_duration.Seconds())
+	fs := float64(p.sampleRate)
+	for i := 0; i < len(buf) / 4; i++ {
+		if p.offset >= length {
+			return i * 4, nil
+		}
+		f := float32(math.Sin(2 * math.Pi * (
+			chirp_rate / 2.0 / fs / fs * float64(p.offset * p.offset) + 
+			preamble_start_freq / fs * float64(p.offset))))
+		bs := math.Float32bits(f)
+		buf_offset := 4 * i
+		buf[buf_offset] = byte(bs)
+	  buf[buf_offset+1] = byte(bs>>8)
+	  buf[buf_offset+2] = byte(bs>>16)
+	  buf[buf_offset+3] = byte(bs>>24)
+		p.offset += 1
+	}
+	return len(buf) / 4 * 4, nil
+}
+
 func modulate_bit(b bool, sampleRate float64) []float32 {
 	sampleNum := int(math.Ceil(modulate_duration.Seconds() * sampleRate))
 	result := make([]float32, sampleNum)
@@ -106,14 +140,20 @@ func modulate_bit(b bool, sampleRate float64) []float32 {
 }
 
 func modulate(c *oto.Context, message BitString, sampleRate int) {
+
+	preamble_sig := c.NewPlayer(&PreambleSig{
+		offset: 0,
+		sampleRate: sampleRate })
+	preamble_sig.Play()
+	time.Sleep(preamble_duration)
+
 	one_modulated := modulate_bit(true, float64(sampleRate))
 	zero_modulated := modulate_bit(false, float64(sampleRate))
 	fmt.Printf("Trying to modulate %v\n", message)
-
-	p := c.NewPlayer(&ChanSound{data: message, high: one_modulated, low: zero_modulated, sampleRate: sampleRate})
-	p.Play()
-
+	data_sig := c.NewPlayer(&DataSig{data: message, high: one_modulated, low: zero_modulated, sampleRate: sampleRate})
+	data_sig.Play()
 	time.Sleep(time.Duration(len(message)) * modulate_duration)
+
 	fmt.Println("Message successfully modulated and played")
 } 
 
