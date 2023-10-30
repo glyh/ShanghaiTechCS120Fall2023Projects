@@ -17,6 +17,10 @@ const delta = modulate_duration
 const zero_freq = 1000.0
 const one_freq = 4000.0
 
+const preamble_duration = 500 * time.Millisecond
+const preamble_start_freq = 1000.0
+const preamble_final_freq = 8000.0
+
 type BitString = []byte
 
 func read_bitstring(s string) BitString {
@@ -89,9 +93,6 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 
 // uses a linear chirp here
 // f(t) = sin(2pi ((c / 2)t^2 + f0t) )
-const preamble_duration = 1000 * time.Millisecond
-const preamble_start_freq = 1000.0
-const preamble_final_freq = 8000.0
 type PreambleSig struct {
 	offset int
 	sampleRate int
@@ -99,8 +100,8 @@ type PreambleSig struct {
 
 func (p *PreambleSig) Read(buf []byte) (int, error) {
 	chirp_rate := (preamble_final_freq - preamble_start_freq) / preamble_duration.Seconds()
-	length := p.sampleRate * int(preamble_duration.Seconds())
 	fs := float64(p.sampleRate)
+	length := int(fs * preamble_duration.Seconds())
 	for i := 0; i < len(buf) / 4; i++ {
 		if p.offset >= length {
 			return i * 4, nil

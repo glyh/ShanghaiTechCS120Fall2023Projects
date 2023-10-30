@@ -13,11 +13,13 @@ import (
 )
 
 const sampleRate = 44100
-const preamble_duration = 1000 * time.Millisecond
+const preamble_duration = 500 * time.Millisecond
 const preamble_start_freq = 1000.0
 const preamble_final_freq = 8000.0
 
-const slice_duration = 100 * time.Millisecond
+const slice_duration = 50 * time.Millisecond
+const slice_num = 8
+const cutoff_variance_preamble = 1.6e7 
 
 func main() {
 	ctx, err := malgo.InitContext(nil, malgo.ContextConfig{}, func(message string) {
@@ -39,6 +41,8 @@ func main() {
 	samples_required := int(math.Ceil(preamble_duration.Seconds() * sampleRate))
 	rb := newRb(samples_required * 2)
 
+	chirp_rate := (preamble_final_freq - preamble_start_freq) / preamble_duration.Seconds()
+
 	frameCountAll := 0
 	onRecvFrames := func(pSample2, pSample []byte, framecount uint32) {
 		if(framecount > uint32(rb.Length())) {
@@ -59,10 +63,11 @@ func main() {
 		// check whether we can start to work, the following conditions need to met: 
 		// 1. we have enough samples to accept a preamble
 		// 2. in the last slice the peak frequency is "around" 8000Hz
-		// 3. the peak frequency in the last 4 slices follows the characteristic of the chirp signal
+		// 3. the peak frequency in the last slice_num slices follows the characteristic of the chirp signal
 		if frameCountAll >= samples_required {
 			slice_width := int(math.Ceil(slice_duration.Seconds() * sampleRate))
-			for i := 0; i < 4; i++ {
+			variance := 0.0
+			for i := 0; i < slice_num; i++ {
 				to_analyze := rb.CopyStrideRight(i * slice_width, slice_width)
 				
 				spectrum := fft.FFTReal(to_analyze)
@@ -86,13 +91,17 @@ func main() {
 						max_energy_freq = sampleRate * float64(i) / float64(L)
 					}
 				}
-				// let preamble_final_freq = Fs * i / L, 
-				// i = preamble_final_freq / FS * L
-				// idx := int(preamble_final_freq / sampleRate * float64(L))
-				// fmt.Printf("energy around frequency %f: %f\n", preamble_final_freq, energy[idx])
-				fmt.Printf("Around frequency %f we have max energy\n", max_energy_freq)
-				break
+				// fmt.Printf("Around frequency %f we have max energy at slice[-%d]\n", max_energy_freq, i)
+
+				avg_freq := preamble_final_freq - (float64(i) + 0.5) * slice_duration.Seconds() * chirp_rate
+				// fmt.Printf("We expect frequency %f\n", avg_freq)
+				delta := avg_freq - max_energy_freq
+				variance += delta * delta 
 			}
+			if variance < cutoff_variance_preamble {
+				fmt.Println("Preamble detected!")
+			}
+			// fmt.Println("We have a total variance of %f\n", variance)
 		}
 	}
 
