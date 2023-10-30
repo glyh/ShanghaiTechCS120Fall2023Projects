@@ -59,6 +59,8 @@ func main() {
 			slice_width := int(math.Ceil(slice_duration.Seconds() * sampleRate))
 			for i := 0; i < 4; i++ {
 				to_analyze := rb.CopyStrideRight(i * slice_width, slice_width)
+				// TODO: run FFT on to_analyze and calculate peak frequency, keep a few peak 
+				// frequency and compare the similarity of the sequence to our preamble
 			}
 		}
 	}
