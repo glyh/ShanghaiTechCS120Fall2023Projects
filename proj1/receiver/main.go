@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gen2brain/malgo"
+  "github.com/mjibson/go-dsp/fft"
 )
 
 const sampleRate = 44100
@@ -29,8 +30,6 @@ func main() {
 	deviceConfig := malgo.DefaultDeviceConfig(malgo.Duplex)
 	deviceConfig.Capture.Format = malgo.FormatF32
 	deviceConfig.Capture.Channels = 1
-	deviceConfig.Playback.Format = malgo.FormatS16
-	deviceConfig.Playback.Channels = 1
 	deviceConfig.SampleRate = sampleRate
 	deviceConfig.Alsa.NoMMap = 1
 
@@ -59,6 +58,9 @@ func main() {
 			slice_width := int(math.Ceil(slice_duration.Seconds() * sampleRate))
 			for i := 0; i < 4; i++ {
 				to_analyze := rb.CopyStrideRight(i * slice_width, slice_width)
+				
+				spectrum := fft.FFTReal(to_analyze)
+				fmt.Printf("FFT output: %v\n", spectrum)
 				// TODO: run FFT on to_analyze and calculate peak frequency, keep a few peak 
 				// frequency and compare the similarity of the sequence to our preamble
 			}
@@ -90,21 +92,21 @@ func chk(err error) {
 type RingBuffer struct {
 	head int
 	tail int
-	inner []float32
+	inner []float64
 }
 
 func newRb(size int) RingBuffer {
 	return RingBuffer{
 		head: 0,
 		tail: 1,
-		inner: make([]float32, size + 1),
+		inner: make([]float64, size + 1),
 	}
 }
 
 func (rb *RingBuffer) Length() int{
 	return int(len(rb.inner))
 }
-func (rb *RingBuffer) Write(f float32) {
+func (rb *RingBuffer) Write(f float64) {
 	rb.inner[rb.tail] = f
 	rb.tail = (rb.tail + 1) % len(rb.inner)
 	if rb.tail == 0 && rb.head == 0 {
@@ -112,7 +114,7 @@ func (rb *RingBuffer) Write(f float32) {
 	}
 }
 
-func (rb * RingBuffer) CopyStrideRight(rbegin int , count int) []float32 {
+func (rb * RingBuffer) CopyStrideRight(rbegin int , count int) []float64 {
 	length := rb.tail - rb.head
 	end := len(rb.inner)
 	if rb.tail < rb.head {
@@ -125,7 +127,7 @@ func (rb * RingBuffer) CopyStrideRight(rbegin int , count int) []float32 {
 	if r_edge <= 0 {
 		r_edge += end
 	}
-	result := make([]float32, count)
+	result := make([]float64, count)
 	if r_edge >= count {
 		copy(result, rb.inner[r_edge-count:r_edge])
 	} else {
