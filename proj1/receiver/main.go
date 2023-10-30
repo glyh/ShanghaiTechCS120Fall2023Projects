@@ -13,13 +13,16 @@ import (
 )
 
 const sampleRate = 44100
-const preamble_duration = 400 * time.Millisecond
-const preamble_start_freq = 1000.0
-const preamble_final_freq = 8000.0
+const preamble_duration = 500 * time.Millisecond
+// in general we want higher preamble freqency to distinguish from the noises
+const preamble_start_freq = 5000.0
+const preamble_final_freq = 10000.0
 
 const slice_duration = 50 * time.Millisecond
 const slice_num = 8
-const cutoff_variance_preamble = 1.4e7 
+// the issue with this is: the bigger this is we can tollerant weaker signals but the possibility 
+// of misidentification increases
+const cutoff_variance_preamble = 1e8 
 
 func main() {
 	ctx, err := malgo.InitContext(nil, malgo.ContextConfig{}, func(message string) {
@@ -44,64 +47,71 @@ func main() {
 	chirp_rate := (preamble_final_freq - preamble_start_freq) / preamble_duration.Seconds()
 
 	frameCountAll := 0
+	is_idle := true
 	onRecvFrames := func(pSample2, pSample []byte, framecount uint32) {
-		if(framecount > uint32(rb.Length())) {
-			panic("ring buffer too small")
-		}
-		if len(pSample) % data_width != 0 {
-			panic("weird input: sample bytes length not multiple of data width")
-		}
+		if is_idle {
 
-		frameCountAll += int(framecount)
-		// TODO: fix this
-		for i := 0; i < len(pSample); i += data_width {
-			bits := binary.LittleEndian.Uint32(pSample[i:i+4])
-			f := math.Float32frombits(bits) 
-			rb.Write(float64(f))
-		}
+			if(framecount > uint32(rb.Length())) {
+				panic("ring buffer too small")
+			}
+			if len(pSample) % data_width != 0 {
+				panic("weird input: sample bytes length not multiple of data width")
+			}
 
-		// check whether we can start to work, the following conditions need to met: 
-		// 1. we have enough samples to accept a preamble
-		// 2. in the last slice the peak frequency is "around" 8000Hz
-		// 3. the peak frequency in the last slice_num slices follows the characteristic of the chirp signal
-		if frameCountAll >= samples_required {
-			slice_width := int(math.Ceil(slice_duration.Seconds() * sampleRate))
-			variance := 0.0
-			for i := 0; i < slice_num; i++ {
-				to_analyze := rb.CopyStrideRight(i * slice_width, slice_width)
-				
-				spectrum := fft.FFTReal(to_analyze)
-				
-				L := len(to_analyze)
+			frameCountAll += int(framecount)
+			// TODO: fix this
+			for i := 0; i < len(pSample); i += data_width {
+				bits := binary.LittleEndian.Uint32(pSample[i:i+4])
+				f := math.Float32frombits(bits) 
+				rb.Write(float64(f))
+			}
 
-				energy := make([]float64, L/2+1)
-				energy[0] = cmplx.Abs(spectrum[0]) / float64(L)
-				for i := 1; i < L / 2; i += 1 {
-					energy[i] = 2 * cmplx.Abs(spectrum[i]) / float64(L)
-				}
+			// check whether we can start to work, the following conditions need to met: 
+			// 1. we have enough samples to accept a preamble
+			// 2. in the last slice the peak frequency is "around" 8000Hz
+			// 3. the peak frequency in the last slice_num slices follows the characteristic of the chirp signal
+			if frameCountAll >= samples_required {
+				slice_width := int(math.Ceil(slice_duration.Seconds() * sampleRate))
+				variance := 0.0
+				for i := 0; i < slice_num; i++ {
+					to_analyze := rb.CopyStrideRight(i * slice_width, slice_width)
+					
+					spectrum := fft.FFTReal(to_analyze)
+					
+					L := len(to_analyze)
 
-				var max_energy_freq float64
-				var max_energy float64
-				max_energy_freq = 0.0
-				max_energy = 0
-				for i := 0; i < L / 2 + 1; i++ {
-					// energy[i] correponds to frequency Fs * i/L
-					if energy[i] > max_energy {
-						max_energy = energy[i]
-						max_energy_freq = sampleRate * float64(i) / float64(L)
+					energy := make([]float64, L/2+1)
+					energy[0] = cmplx.Abs(spectrum[0]) / float64(L)
+					for i := 1; i < L / 2; i += 1 {
+						energy[i] = 2 * cmplx.Abs(spectrum[i]) / float64(L)
 					}
-				}
-				// fmt.Printf("Around frequency %f we have max energy at slice[-%d]\n", max_energy_freq, i)
 
-				avg_freq := preamble_final_freq - (float64(i) + 0.5) * slice_duration.Seconds() * chirp_rate
-				// fmt.Printf("We expect frequency %f\n", avg_freq)
-				delta := avg_freq - max_energy_freq
-				variance += delta * delta 
+					var max_energy_freq float64
+					var max_energy float64
+					max_energy_freq = 0.0
+					max_energy = 0
+					for i := 0; i < L / 2 + 1; i++ {
+						// energy[i] correponds to frequency Fs * i/L
+						if energy[i] > max_energy {
+							max_energy = energy[i]
+							max_energy_freq = sampleRate * float64(i) / float64(L)
+						}
+					}
+					// fmt.Printf("Around frequency %f we have max energy at slice[-%d]\n", max_energy_freq, i)
+
+					avg_freq := preamble_final_freq - (float64(i) + 0.5) * slice_duration.Seconds() * chirp_rate
+					// fmt.Printf("We expect frequency %f\n", avg_freq)
+					delta := avg_freq - max_energy_freq
+					variance += delta * delta 
+				}
+				if variance < cutoff_variance_preamble {
+					fmt.Println("Preamble detected!")
+				}
+				fmt.Println("We have a total variance of %lf", variance)
 			}
-			if variance < cutoff_variance_preamble {
-				fmt.Println("Preamble detected!")
-			}
-			// fmt.Println("We have a total variance of %f", variance)
+			// TODO: clear the ring buffer
+		} else {
+			// we're in working mode
 		}
 	}
 

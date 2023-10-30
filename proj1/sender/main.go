@@ -18,8 +18,8 @@ const zero_freq = 1000.0
 const one_freq = 4000.0
 
 const preamble_duration = 500 * time.Millisecond
-const preamble_start_freq = 1000.0
-const preamble_final_freq = 8000.0
+const preamble_start_freq = 5000.0
+const preamble_final_freq = 10000.0
 
 type BitString = []byte
 
