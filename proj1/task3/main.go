@@ -11,6 +11,10 @@ import (
 	"math"
 )
 
+const modulate_duration = 200 * time.Millisecond
+const zero_freq = 1000.0
+const one_freq = 4000.0
+
 type BitString = []byte
 
 func read_bitstring(s string) BitString {
@@ -37,16 +41,9 @@ func main() {
 	chk(err)
 	<-ready
 
-	// portaudio.Initialize()
-	// defer portaudio.Terminate()
-	// sampleRate := 44100.0
 	msg := read_bitstring("010100111")
-	modulate(c, msg, opts.SampleRate)
+	modulate(c, do_4b5b(msg), opts.SampleRate)
 }
-
-const modulate_duration = 300 * time.Millisecond
-const zero_freq = 1000.0
-const one_freq = 4000.0
 
 type ChanSound struct {
 	data BitString
@@ -117,7 +114,7 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	p.Play()
 
 	time.Sleep(time.Duration(len(message)) * modulate_duration)
-	fmt.Println("Message successfully modulated and played\n")
+	fmt.Println("Message successfully modulated and played")
 } 
 
 func demodulate(message []float64) BitString {
