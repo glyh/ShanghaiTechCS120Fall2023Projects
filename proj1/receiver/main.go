@@ -74,11 +74,23 @@ func main() {
 				for i := 1; i < L / 2; i += 1 {
 					energy[i] = 2 * cmplx.Abs(spectrum[i]) / float64(L)
 				}
-				// energy[i] correponds to frequency Fs * i/L
+
+				var max_energy_freq float64
+				var max_energy float64
+				max_energy_freq = 0.0
+				max_energy = 0
+				for i := 0; i < L / 2 + 1; i++ {
+					// energy[i] correponds to frequency Fs * i/L
+					if energy[i] > max_energy {
+						max_energy = energy[i]
+						max_energy_freq = sampleRate * float64(i) / float64(L)
+					}
+				}
 				// let preamble_final_freq = Fs * i / L, 
 				// i = preamble_final_freq / FS * L
-				idx := int(preamble_final_freq / sampleRate * float64(L))
-				fmt.Printf("energy around frequency %f: %f\n", preamble_final_freq, energy[idx])
+				// idx := int(preamble_final_freq / sampleRate * float64(L))
+				// fmt.Printf("energy around frequency %f: %f\n", preamble_final_freq, energy[idx])
+				fmt.Printf("Around frequency %f we have max energy\n", max_energy_freq)
 				break
 			}
 		}
