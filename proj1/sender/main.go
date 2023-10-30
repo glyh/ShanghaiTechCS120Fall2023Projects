@@ -12,7 +12,7 @@ import (
 	"math"
 )
 
-const modulate_duration = 500 * time.Millisecond
+const modulate_duration = 400 * time.Millisecond
 const delta = modulate_duration
 const zero_freq = 1000.0
 const one_freq = 4000.0

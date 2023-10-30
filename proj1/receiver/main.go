@@ -13,13 +13,13 @@ import (
 )
 
 const sampleRate = 44100
-const preamble_duration = 500 * time.Millisecond
+const preamble_duration = 400 * time.Millisecond
 const preamble_start_freq = 1000.0
 const preamble_final_freq = 8000.0
 
 const slice_duration = 50 * time.Millisecond
 const slice_num = 8
-const cutoff_variance_preamble = 1.6e7 
+const cutoff_variance_preamble = 1.4e7 
 
 func main() {
 	ctx, err := malgo.InitContext(nil, malgo.ContextConfig{}, func(message string) {
@@ -101,7 +101,7 @@ func main() {
 			if variance < cutoff_variance_preamble {
 				fmt.Println("Preamble detected!")
 			}
-			// fmt.Println("We have a total variance of %f\n", variance)
+			// fmt.Println("We have a total variance of %f", variance)
 		}
 	}
 
