@@ -1,4 +1,4 @@
-module p1t3
+module sender
 
 go 1.21.1
 

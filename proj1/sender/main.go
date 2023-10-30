@@ -3,6 +3,7 @@
 package main
 
 import (
+	"slices"
 	"time"
 
 	"github.com/ebitengine/oto/v3"
@@ -11,7 +12,8 @@ import (
 	"math"
 )
 
-const modulate_duration = 200 * time.Millisecond
+const modulate_duration = 500 * time.Millisecond
+const delta = modulate_duration
 const zero_freq = 1000.0
 const one_freq = 4000.0
 
@@ -88,13 +90,11 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 // uses a linear chirp here
 // f(t) = sin(2pi ((c / 2)t^2 + f0t) )
 const preamble_duration = 1000 * time.Millisecond
-const preamble_start_freq = 500.0
-const preamble_final_freq = 3000.0
+const preamble_start_freq = 1000.0
+const preamble_final_freq = 8000.0
 type PreambleSig struct {
-	// phase float64
 	offset int
 	sampleRate int
-	// phaseDelta float64
 }
 
 func (p *PreambleSig) Read(buf []byte) (int, error) {
@@ -139,8 +139,26 @@ func modulate_bit(b bool, sampleRate float64) []float32 {
 	return result
 }
 
+func encode_int(l int) BitString {
+	output := BitString{}
+	for l != 0 {
+		last_bit := byte(l & 1)
+		l = l >> 1
+		output = append(output, last_bit)
+	}
+	slices.Reverse(output)
+	return output
+
+}
+
+func calculate_crc(msg BitString) BitString {
+	// TODO: Implement CRC
+	return BitString{}
+}
+
 func modulate(c *oto.Context, message BitString, sampleRate int) {
 
+	fmt.Println("Sending preamble")
 	preamble_sig := c.NewPlayer(&PreambleSig{
 		offset: 0,
 		sampleRate: sampleRate })
@@ -149,10 +167,24 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 
 	one_modulated := modulate_bit(true, float64(sampleRate))
 	zero_modulated := modulate_bit(false, float64(sampleRate))
+
+	crc := calculate_crc(message)
+
+	length := len(message) + len(crc) // CRC is of fixed length so we're safe to do this
+	length_encoded := encode_int(length)
+
+	fmt.Printf("Encoding length(data+CRC): %d, encoded as %v\n", length, length_encoded)
+	length_sig := c.NewPlayer(&DataSig{data: length_encoded, high: one_modulated, low: zero_modulated, sampleRate: sampleRate})
+	length_sig.Play()
+	time.Sleep(time.Duration(len(length_encoded)) * modulate_duration)
+
+	fmt.Printf("Sending separator sequence as silence\n")
+	time.Sleep(modulate_duration)
+
 	fmt.Printf("Trying to modulate %v\n", message)
 	data_sig := c.NewPlayer(&DataSig{data: message, high: one_modulated, low: zero_modulated, sampleRate: sampleRate})
 	data_sig.Play()
-	time.Sleep(time.Duration(len(message)) * modulate_duration)
+	time.Sleep(time.Duration(len(message)) * modulate_duration + delta)
 
 	fmt.Println("Message successfully modulated and played")
 } 
