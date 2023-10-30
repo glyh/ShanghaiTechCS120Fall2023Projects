@@ -1,49 +1,56 @@
-// Reference: https://github.com/gordonklaus/portaudio/blob/master/examples/stereoSine.go
-
 package main
 
 import (
-	"github.com/gordonklaus/portaudio"
+	"github.com/ebitengine/oto/v3"
 	"math"
 	"fmt"
 )
 
 const sampleRate = 44100
+const data_byte_length = 4
+
+type DoubleSine struct {
+	phase float64
+	phaseDelta float64
+}
+
+func NewDoubleSine(sampleRate float64) *DoubleSine {
+	return &DoubleSine{
+		phase: 0,
+		phaseDelta: 2 * math.Pi / sampleRate,
+	}
+}
+
+func (d *DoubleSine) Read(buf []byte) (int, error) {
+	for i := 0; i < len(buf); i += 4 {
+		f := float32(math.Sin(1000 * d.phase) + math.Sin(10000 * d.phase)) 
+		bs := math.Float32bits(f)
+		buf[i] = byte(bs)
+		buf[i+1] = byte(bs>>8)
+		buf[i+2] = byte(bs>>16)
+		buf[i+3] = byte(bs>>24)
+		d.phase = math.Mod(d.phase + d.phaseDelta, (2 * math.Pi))
+	}
+	return len(buf) / 4 * 4, nil
+}
 
 func main() {
-	portaudio.Initialize()
-	defer portaudio.Terminate()
-	s := newWave(sampleRate)
-	defer s.Close()
-	chk(s.Start())
+	opts := &oto.NewContextOptions{}
+
+	opts.SampleRate = 44100
+	opts.ChannelCount = 1
+
+	opts.Format = oto.FormatFloat32LE
+
+	c, ready, err := oto.NewContext(opts)
+	chk(err)
+	<-ready
+
+	p := c.NewPlayer(NewDoubleSine(sampleRate))
+	p.Play()
 	fmt.Println("Press 'Enter' to Exit")
 	fmt.Scanln()
-	chk(s.Stop())
-}
 
-type Wave struct {
-	*portaudio.Stream
-	sampleRate float64
-	phaseDelta float64
-	phase float64
-}
-
-func newWave(sampleRate float64) *Wave {
-	// phaseDelta = 2 Pi / Fs
-	s := &Wave{nil, sampleRate, 2 * math.Pi / sampleRate, 0.0}
-	var err error
-	s.Stream, err = portaudio.OpenDefaultStream(0, 1, sampleRate, 0, s.processAudio)
-	chk(err)
-	return s
-}
-
-func (g *Wave) processAudio(out [][]float32) {
-	phase := g.phase
-	for i := range out[0] {
-		out[0][i] = float32(math.Sin(1000 * phase) + math.Sin(10000 * phase))
-		phase = phase + g.phaseDelta
-	}
-	g.phase = math.Mod(phase, (2 * math.Pi))
 }
 
 func chk(err error) {
