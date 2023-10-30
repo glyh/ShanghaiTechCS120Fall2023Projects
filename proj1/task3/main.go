@@ -3,10 +3,12 @@
 package main
 
 import (
+	"time"
+
+	"github.com/ebitengine/oto/v3"
+
 	"fmt"
 	"math"
-
-	"github.com/gordonklaus/portaudio"
 )
 
 type BitString = []byte
@@ -24,22 +26,70 @@ func read_bitstring(s string) BitString {
 }
 
 func main() {
-	portaudio.Initialize()
-	defer portaudio.Terminate()
-	sampleRate := 44100.0
+	opts := &oto.NewContextOptions{}
+
+	opts.SampleRate = 44100
+	opts.ChannelCount = 1
+
+	opts.Format = oto.FormatFloat32LE
+
+	c, ready, err := oto.NewContext(opts)
+	chk(err)
+	<-ready
+
+	// portaudio.Initialize()
+	// defer portaudio.Terminate()
+	// sampleRate := 44100.0
 	msg := read_bitstring("010100111")
-	modulate(msg, sampleRate)
-	// modulate(do_4b5b(msg), sampleRate)
-	fmt.Println("Message successfully modulated and played")
-	fmt.Scanln()
+	modulate(c, msg, opts.SampleRate)
 }
 
-const modulate_duration = 1.0 // 1sec
-const zero_freq = 40000.0
-const one_freq = 80000.0
+const modulate_duration = 300 * time.Millisecond
+const zero_freq = 1000.0
+const one_freq = 4000.0
+
+type ChanSound struct {
+	data BitString
+	low []float32
+	high []float32
+	offset int
+	sampleRate int
+}
+
+func (c *ChanSound) Read(buf []byte) (int, error) {
+	sample_len := len(c.high)
+	index := c.offset / sample_len
+	if index >= len(c.data) {
+		return 0, nil
+	}
+	head := c.offset
+	tail := c.offset + len(buf) / 4
+
+	for ; c.offset < tail; c.offset += 1 {
+		buf_offset := (c.offset - head) * 4
+		cur_index := c.offset / sample_len
+		cur_offset_sig := c.offset % sample_len
+		if cur_index >= len(c.data) {
+			return buf_offset, nil
+		}
+		cur_bit := c.data[cur_index]
+		cur_f := c.high[cur_offset_sig]
+		if cur_bit == 0 {
+			cur_f = c.low[cur_offset_sig]
+		}
+
+		bs := math.Float32bits(cur_f)
+
+		buf[buf_offset] = byte(bs)
+		buf[buf_offset+1] = byte(bs>>8)
+		buf[buf_offset+2] = byte(bs>>16)
+		buf[buf_offset+3] = byte(bs>>24)
+	}
+	return len(buf) / 4 * 4, nil
+}
 
 func modulate_bit(b bool, sampleRate float64) []float32 {
-	sampleNum := int(math.Ceil(modulate_duration * sampleRate))
+	sampleNum := int(math.Ceil(modulate_duration.Seconds() * sampleRate))
 	result := make([]float32, sampleNum)
 
 	freq := zero_freq
@@ -47,14 +97,38 @@ func modulate_bit(b bool, sampleRate float64) []float32 {
 		freq = one_freq
 	}
 
+	phase := 0.0
+	phaseDelta := 2 * math.Pi / sampleRate
+	
 	for i := 0; i < sampleNum; i++ {
-		t := float64(i) / sampleRate
-		result[i] = float32(math.Sin(2 * math.Pi * freq * t))
+		result[i] = float32(math.Sin(freq * phase))
+		phase = math.Mod(phase + phaseDelta, 2 * math.Pi)
 	} 
 
 	return result
 }
 
+func modulate(c *oto.Context, message BitString, sampleRate int) {
+	one_modulated := modulate_bit(true, float64(sampleRate))
+	zero_modulated := modulate_bit(false, float64(sampleRate))
+	fmt.Printf("Trying to modulate %v\n", message)
+
+	p := c.NewPlayer(&ChanSound{data: message, high: one_modulated, low: zero_modulated, sampleRate: sampleRate})
+	p.Play()
+
+	time.Sleep(time.Duration(len(message)) * modulate_duration)
+	fmt.Println("Message successfully modulated and played\n")
+} 
+
+func demodulate(message []float64) BitString {
+	return BitString{}
+}
+
+func chk(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
 
 func do_4b5b(message BitString) BitString {
 	map_4b5b := map[byte][]byte {
@@ -98,58 +172,4 @@ func do_4b5b(message BitString) BitString {
 		k += 5
 	}
 	return out
-}
-
-func process_bits(message BitString, sampleRate float64, sig chan bool) func([][]float32) {
-	one_modulated := modulate_bit(true, sampleRate)
-	zero_modulated := modulate_bit(false, sampleRate)
-	frame_id := 0.0
-	return func (out [][]float32) {
-		bit_index := int(frame_id / sampleRate)
-		if bit_index >= len(message) {
-			sig <- true
-		} else {
-			in_frame_delta := math.Mod(frame_id, sampleRate)
-			out_offset := 0
-			if sampleRate - in_frame_delta < 
-			for ; sampleRate - in_frame_delta < float64(len(out[0]) - out_offset); {
-				copy(out[out_offset:out_offset])
-
-			}
-			frame_id += len(out)
-		}
-
-		// fmt.Printf("Modulated as %v\n", out[0])
-		// if offset >= len(message) {
-		// 	sig <- true
-		// } else {
-		// 	fmt.Printf("Playing %d\n", message[offset])
-		// 	if message[offset] == 1 {
-		// 		copy(out[0], one_modulated)
-		// 	} else {
-		// 		copy(out[0], zero_modulated)
-		// 	}
-		// 	fmt.Printf("Modulated as %v\n", out[0])
-		// }
-	}
-}
-
-func modulate(message BitString, sampleRate float64) {
-	fmt.Printf("Trying to modulate %v", message)
-	stop := make(chan bool)
-	stream, err := portaudio.OpenDefaultStream(0, 1, sampleRate, 0, process_bits(message, sampleRate, stop))
-	chk(err)
-	stream.Start()
-	<-stop 
-	stream.Stop()
-} 
-
-func demodulate(message []float64) BitString {
-	return BitString{}
-}
-
-func chk(err error) {
-	if err != nil {
-		panic(err)
-	}
 }
