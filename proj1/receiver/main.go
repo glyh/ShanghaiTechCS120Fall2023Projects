@@ -2,6 +2,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math"
 	"math/cmplx"
@@ -49,7 +50,11 @@ func main() {
 
 		frameCountAll += int(framecount)
 		// TODO: fix this
-		// rb.Write(pSample)
+		for i := 0; i < len(pSample); i += data_width {
+			bits := binary.LittleEndian.Uint32(pSample[i:i+4])
+			f := math.Float32frombits(bits) 
+			rb.Write(float64(f))
+		}
 
 		// check whether we can start to work, the following conditions need to met: 
 		// 1. we have enough samples to accept a preamble
@@ -74,6 +79,7 @@ func main() {
 				// i = preamble_final_freq / FS * L
 				idx := int(preamble_final_freq / sampleRate * float64(L))
 				fmt.Printf("energy around frequency %f: %f\n", preamble_final_freq, energy[idx])
+				break
 			}
 		}
 	}
@@ -120,9 +126,11 @@ func (rb *RingBuffer) Length() int{
 func (rb *RingBuffer) Write(f float64) {
 	rb.inner[rb.tail] = f
 	rb.tail = (rb.tail + 1) % len(rb.inner)
-	if rb.tail == 0 && rb.head == 0 {
-		rb.head++ // overwrites behavior
+	if rb.tail == rb.head {
+		rb.head = (rb.head + 1) % len(rb.inner)
 	}
+	// fmt.Printf("we have (head, tail) = (%d, %d) data in rb of length %d\n", rb.head, rb.tail, len(rb.inner))
+	// fmt.Printf("(%d, %d, %d) ", rb.head, rb.tail, len(rb.inner))
 }
 
 func (rb * RingBuffer) CopyStrideRight(rbegin int , count int) []float64 {
@@ -131,6 +139,7 @@ func (rb * RingBuffer) CopyStrideRight(rbegin int , count int) []float64 {
 	if rb.tail < rb.head {
 		length = rb.tail + (end - rb.head)
 	}
+	// fmt.Printf("We have %d data in rb, at most %d data allowed.\n", length, len(rb.inner))
 	if length < count + rbegin {
 		panic("RB doesn't have enough data")
 	}
