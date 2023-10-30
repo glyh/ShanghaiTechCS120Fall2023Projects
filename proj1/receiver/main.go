@@ -4,10 +4,11 @@ package main
 import (
 	"fmt"
 	"math"
+	"math/cmplx"
 	"time"
 
 	"github.com/gen2brain/malgo"
-  "github.com/mjibson/go-dsp/fft"
+        "github.com/mjibson/go-dsp/fft"
 )
 
 const sampleRate = 44100
@@ -60,9 +61,19 @@ func main() {
 				to_analyze := rb.CopyStrideRight(i * slice_width, slice_width)
 				
 				spectrum := fft.FFTReal(to_analyze)
-				fmt.Printf("FFT output: %v\n", spectrum)
-				// TODO: run FFT on to_analyze and calculate peak frequency, keep a few peak 
-				// frequency and compare the similarity of the sequence to our preamble
+				
+				L := len(to_analyze)
+
+				energy := make([]float64, L/2+1)
+				energy[0] = cmplx.Abs(spectrum[0]) / float64(L)
+				for i := 1; i < L / 2; i += 1 {
+					energy[i] = 2 * cmplx.Abs(spectrum[i]) / float64(L)
+				}
+				// energy[i] correponds to frequency Fs * i/L
+				// let preamble_final_freq = Fs * i / L, 
+				// i = preamble_final_freq / FS * L
+				idx := int(preamble_final_freq / sampleRate * float64(L))
+				fmt.Printf("energy around frequency %f: %f\n", preamble_final_freq, energy[idx])
 			}
 		}
 	}
