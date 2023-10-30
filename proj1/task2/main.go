@@ -1,9 +1,12 @@
+// Ref: https://github.com/ebitengine/oto/blob/main/example/main.go
+
 package main
 
 import (
 	"github.com/ebitengine/oto/v3"
-	"math"
+
 	"fmt"
+	"math"
 )
 
 const sampleRate = 44100
@@ -29,7 +32,7 @@ func (d *DoubleSine) Read(buf []byte) (int, error) {
 		buf[i+1] = byte(bs>>8)
 		buf[i+2] = byte(bs>>16)
 		buf[i+3] = byte(bs>>24)
-		d.phase = math.Mod(d.phase + d.phaseDelta, (2 * math.Pi))
+		d.phase = math.Mod(d.phase + d.phaseDelta, 2 * math.Pi)
 	}
 	return len(buf) / 4 * 4, nil
 }
