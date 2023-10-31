@@ -65,14 +65,14 @@ type DataSig struct {
 func (c *DataSig) Read(buf []byte) (int, error) {
 	// number of frame per single symbol
 	frame_per_sym := len(c.sym_mod[0])
-	// how many symbols have we sent
-	symbol_sent := c.offset / frame_per_sym
-	// how many bits have we sent
-	bit_sent := symbol_sent * bit_per_sym
-	// if we already send enough symbol to represent all the data in c.data, terminate
-	if symbol_sent * bit_per_sym >= len(c.data) {
-		return 0, nil
-	}
+	// // how many symbols have we sent
+	// symbol_sent := c.offset / frame_per_sym
+	// // how many bits have we sent
+	// bit_sent := symbol_sent * bit_per_sym
+	// // if we already send enough symbol to represent all the data in c.data, terminate
+	// if symbol_sent * bit_per_sym >= len(c.data) {
+	// 	return 0, nil
+	// }
 
 	for buf_offset := 0; buf_offset < len(buf); buf_offset += 4 {
 		symbol_sent := c.offset / frame_per_sym
@@ -92,6 +92,7 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 		buf[buf_offset+1] = byte(bs>>8)
 		buf[buf_offset+2] = byte(bs>>16)
 		buf[buf_offset+3] = byte(bs>>24)
+		c.offset += 1
 	}
 	return len(buf) / 4 * 4, nil
 }
