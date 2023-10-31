@@ -17,9 +17,9 @@ const modulate_duration_gap = 200 * time.Millisecond
 
 const modulate_duration = 700 * time.Millisecond
 const modulate_low_freq = 2000.0
-const modulate_high_freq = 10000.0
+const modulate_high_freq = 20000.0
 
-const bit_per_sym = 2
+const bit_per_sym = 5
 const sym_num = 1 << bit_per_sym
 
 const sampleRate = 44100.0
