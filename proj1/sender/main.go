@@ -1,5 +1,7 @@
 // Reference: https://github.com/gordonklaus/portaudio/blob/master/examples/stereoSine.go
 
+// Useful articles: http://www.sunshine2k.de/articles/coding/crc/understanding_crc.html#ch4
+
 package main
 
 import (
@@ -152,12 +154,40 @@ func encode_int(l int) BitString {
 
 }
 
-func calculate_crc(msg BitString) BitString {
+const crc_length = 16
+
+func calculate_crc(_msg BitString) BitString {
 	// TODO: Implement CRC
-	return BitString{}
+	// append crc_length 0s after the end of the message
+	length := len(_msg)
+	crc := 0
+	msg := make(BitString, length + crc_length)
+	copy(msg[0:length], _msg)
+	for i := 0; i < length; i++ {
+		crc <<= 1
+		if msg[i] == 1 {
+			crc |= 1
+		  // CRC-16-CCITT
+			msg[i] ^= 1
+			crc_coeffs := []int{12, 5, 0}
+			for _, offset := range(crc_coeffs) {
+				msg[i+crc_length-offset] ^= 1
+			}
+		}
+	}
+	return pad_bitstring(crc_length, encode_int(crc))
+}
+
+func pad_bitstring(length int, msg BitString) BitString {
+	if len(msg) > length {
+		panic("input bitstring too long")
+	}
+	return append(make(BitString, length - len(msg)), msg...)
 }
 
 func modulate(c *oto.Context, message BitString, sampleRate int) {
+
+	fmt.Printf("Trying to modulate %v\n", message)
 
 	fmt.Println("Sending preamble")
 	preamble_sig := c.NewPlayer(&PreambleSig{
@@ -170,6 +200,7 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	zero_modulated := modulate_bit(false, float64(sampleRate))
 
 	crc := calculate_crc(message)
+	fmt.Printf("Calculating CRC, got %v\n", crc)
 
 	length := len(message) + len(crc) // CRC is of fixed length so we're safe to do this
 	length_encoded := encode_int(length)
@@ -178,7 +209,7 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	if len(length_encoded) > 16 {
 		panic("message too long")
 	}
-	length_encoded = append(make(BitString, 16 - len(length_encoded)), length_encoded...)
+	length_encoded = pad_bitstring(16, length_encoded)
 
 	fmt.Printf("Encoding length(data+CRC): %d, encoded as %v\n", length, length_encoded)
 	length_sig := c.NewPlayer(&DataSig{data: length_encoded, high: one_modulated, low: zero_modulated, sampleRate: sampleRate})
@@ -188,8 +219,10 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	// fmt.Printf("Sending separator sequence as silence\n")
 	// time.Sleep(modulate_duration)
 
-	fmt.Printf("Trying to modulate %v\n", message)
-	data_sig := c.NewPlayer(&DataSig{data: message, high: one_modulated, low: zero_modulated, sampleRate: sampleRate})
+	fmt.Printf("Trying to modulate %v and prepend CRC\n", message)
+	output := append(crc, message...)
+	fmt.Printf("Got %v\n", output)
+	data_sig := c.NewPlayer(&DataSig{data: output, high: one_modulated, low: zero_modulated, sampleRate: sampleRate})
 	data_sig.Play()
 	time.Sleep(time.Duration(len(message)) * modulate_duration + delta)
 
