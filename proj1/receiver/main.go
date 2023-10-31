@@ -16,9 +16,10 @@ const shift_duration = 100 * time.Millisecond
 const modulate_duration_gap = 200 * time.Millisecond
 
 const modulate_duration = 700 * time.Millisecond
-const modulate_low_freq = 1000.0
-const modulate_high_freq = 40000.0
-const bit_per_sym = 4
+const modulate_low_freq = 2000.0
+const modulate_high_freq = 10000.0
+
+const bit_per_sym = 2
 const sym_num = 1 << bit_per_sym
 
 const sampleRate = 44100.0
@@ -49,6 +50,17 @@ func sig_to_energy_at_freq(to_analyze []float64) []float64 {
 		energy[i] = 2 * cmplx.Abs(spectrum[i]) / float64(L)
 	}
 	return energy
+}
+
+func arg_max(s []float64) int {
+	ans := -1
+	val := 0.0
+	for i, v := range(s) {
+		if ans == -1 || v > val {
+			ans, val = i, v
+		}
+	}
+	return ans
 }
 
 func get_energy_by_sym(energy []float64, sym byte, fs float64, L int) float64 {
@@ -114,18 +126,7 @@ func main() {
 					energy := sig_to_energy_at_freq(to_analyze)
 					L := len(to_analyze)
 
-					var max_energy_freq float64
-					var max_energy float64
-					max_energy_freq = 0.0
-					max_energy = 0
-					for i := 0; i < L / 2 + 1; i++ {
-						// energy[i] correponds to frequency Fs * i/L
-						if energy[i] > max_energy {
-							max_energy = energy[i]
-							max_energy_freq = sampleRate * float64(i) / float64(L)
-						}
-					}
-					// fmt.Printf("Around frequency %f we have max energy at slice[-%d]\n", max_energy_freq, i)
+					max_energy_freq := sampleRate * float64(arg_max(energy)) / float64(L)
 
 					avg_freq := preamble_final_freq - (float64(i) + 0.5) * slice_duration.Seconds() * chirp_rate
 					// if i == 0 && math.Abs(avg_freq - max_energy_freq) < slice_duration.Seconds() * chirp_rate {
@@ -159,15 +160,16 @@ func main() {
 
 				// energy[i] correponds to frequency Fs * i/L
 				// let Fs * i/L = zero_freq, then i = zero_freq / Fs * L
-				energy_high := energy_cur[int(one_freq * L / sampleRate)]
-				energy_low := energy_cur[int(zero_freq * L / sampleRate)]
-				if energy_high > energy_low {
-					received = append(received, 1)
-					fmt.Printf("%d ", 1)
-				} else {
-					received = append(received, 0)
-					fmt.Printf("%d ", 0)
-				}
+				max_energy_freq := sampleRate * float64(arg_max(energy_cur)) / float64(L)
+				// say max_energy_freq = ratio * modulate_low_freq + (1 - ratio) * modulate_high_freq
+				// then ratio = (modulate_high_freq - max_energy_freq) / (modulate_high_freq - modulate_low_freq)
+				ratio := (modulate_high_freq - max_energy_freq) / (modulate_high_freq - modulate_low_freq)
+				// we know that ratio = i / sym_num
+
+				sym := int(math.Round(ratio * sym_num))
+				received = append(received, byte(sym))
+				fmt.Printf("%d ", sym)
+
 				if false {
 				// if len(received) >= 2 {
 

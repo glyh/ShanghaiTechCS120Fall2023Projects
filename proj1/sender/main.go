@@ -15,10 +15,11 @@ import (
 )
 
 const modulate_duration = 700 * time.Millisecond
-const bit_per_sym = 4
+const modulate_low_freq = 2000.0
+const modulate_high_freq = 10000.0
+
+const bit_per_sym = 2
 const sym_num = 1 << bit_per_sym
-const modulate_low_freq = 1000.0
-const modulate_high_freq = 40000.0
 
 const preamble_duration = 500 * time.Millisecond
 const preamble_start_freq = 5000.0
@@ -88,6 +89,9 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 				sym |= int(c.data[bit_sent + j])
 			}
 		}
+		if symbol_frame_id == 0 {
+			fmt.Printf("%d ", sym)
+		}
 		cur_f := c.sym_mod[sym][symbol_frame_id]
 		bs := math.Float32bits(cur_f)
 
@@ -136,6 +140,7 @@ func modulate_syms(sampleRate float64) [][]float32 {
 			ret[i] = make([]float32, sampleNum)
 			ratio := float64(i) / float64(sym_num)
 			freq := modulate_low_freq * ratio + modulate_high_freq * (1 - ratio) 
+			fmt.Printf("frequency for %d is %f\n", i, freq)
 			phase := 0.0
 			phaseDelta := 2 * math.Pi / sampleRate
 			
