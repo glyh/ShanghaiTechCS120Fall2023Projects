@@ -16,8 +16,10 @@ const shift_duration = 100 * time.Millisecond
 const modulate_duration_gap = 200 * time.Millisecond
 
 const modulate_duration = 700 * time.Millisecond
-const zero_freq = 1000.0
-const one_freq = 9000.0
+const modulate_low_freq = 1000.0
+const modulate_high_freq = 40000.0
+const bit_per_sym = 4
+const sym_num = 1 << bit_per_sym
 
 const sampleRate = 44100.0
 const preamble_duration = 500 * time.Millisecond
@@ -50,10 +52,9 @@ func sig_to_energy_at_freq(to_analyze []float64) []float64 {
 }
 
 func get_energy_by_sym(energy []float64, sym byte, fs float64, L int) float64 {
-	if sym == 0 { return energy[int(zero_freq * float64(L) / fs)]
-	} else {
-		return energy[int(one_freq * float64(L) / fs)]
-	}
+	ratio := float64(sym) / float64(sym_num)
+	freq_expect := ratio * modulate_low_freq + (1 - ratio) * modulate_high_freq
+	return energy[int(freq_expect * float64(L) / fs)]
 }
 
 func main() {
