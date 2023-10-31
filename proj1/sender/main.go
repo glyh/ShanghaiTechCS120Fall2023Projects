@@ -16,7 +16,7 @@ import (
 	// "os"
 )
 
-const modulate_duration = 120 * time.Millisecond
+const modulate_duration = 100 * time.Millisecond
 const modulate_low_freq = 500.0
 const modulate_high_freq = 18000.0
 
@@ -29,7 +29,7 @@ const preamble_duration = 500 * time.Millisecond
 const preamble_start_freq = 100.0
 const preamble_final_freq = 500.0
 
-const len_length = 2
+const len_length = 3
 
 type BitString = []int
 

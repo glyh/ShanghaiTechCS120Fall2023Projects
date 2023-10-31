@@ -14,16 +14,18 @@ import (
         "github.com/mjibson/go-dsp/fft"
 )
 
-const shift_duration = 120 * time.Millisecond
-const modulate_duration_gap = 20 * time.Millisecond
 
+const modulate_duration_gap = 20 * time.Millisecond
 const modulate_duration = 100 * time.Millisecond
 const modulate_low_freq = 500.0
 const modulate_high_freq = 18000.0
+
 const bit_per_sym = 10
 const sym_num = 1 << bit_per_sym
 
-const len_length = 2
+const shift_duration = 120 * time.Millisecond
+
+const len_length = 3
 const len_hash = 4
 
 func pad_bitstring(length int, msg BitString) BitString {
@@ -162,7 +164,7 @@ func main() {
 			if frameCountAll >= samples_required {
 				variance := 0.0
 				freq_shift := 0.0
-				for i := 1; i < slice_num + 1; i++ {
+				for i := 0; i < slice_num; i++ {
 					to_analyze := rb.CopyStrideRight(i * slice_width + slice_inner_width, slice_width - 2 * slice_inner_width)
 
 					energy := sig_to_energy_at_freq(to_analyze)
@@ -183,8 +185,7 @@ func main() {
 					fmt.Println("Preamble detected!")
 					fmt.Printf("Receiving: ")
 					is_idle = false
-					// i is enumerate from 1, we kind of expect this 
-					time_shift := freq_shift / chirp_rate + slice_duration.Seconds()
+					time_shift := freq_shift / chirp_rate
 					frameCountAll = int(time_shift) * sampleRate
 				}
 			}
@@ -214,7 +215,8 @@ func main() {
 				sym := int(math.Round(ratio * sym_num))
 				received = append(received, sym)
 				fmt.Printf("%d ", sym)
-				if len(received) == do_offset + 1 && (sym >= sym_num || sym < 0) {
+				// first bit of length must be 0 if we never sent data over length 10000
+				if len(received) == do_offset + 1 && (sym != 0) {
 					// magic
 					do_offset += 1
 					fmt.Printf("[discard] ")
