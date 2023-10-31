@@ -2,6 +2,8 @@
 package main
 
 import (
+	"os"
+	"slices"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -13,14 +15,43 @@ import (
 )
 
 const shift_duration = 100 * time.Millisecond
-const modulate_duration_gap = 200 * time.Millisecond
+const modulate_duration_gap = 20 * time.Millisecond
 
-const modulate_duration = 700 * time.Millisecond
+const modulate_duration = 100 * time.Millisecond
 const modulate_low_freq = 500.0
 const modulate_high_freq = 15000.0
-
 const bit_per_sym = 10
 const sym_num = 1 << bit_per_sym
+
+const len_length = 2
+const len_hash = 4
+
+func pad_bitstring(length int, msg BitString) BitString {
+	if len(msg) > length {
+		panic("input bitstring too long")
+	}
+	return append(make(BitString, length - len(msg)), msg...)
+}
+
+func calculate_hash(msg BitString) BitString {
+	ret := 0
+	for i, v := range(msg) {
+		ret ^= i * v
+	}
+	return pad_bitstring(len_hash, encode_int(ret))
+}
+
+func encode_int(l int) BitString {
+	output := BitString{}
+	mask := (1 << bit_per_sym) - 1
+	for l != 0 {
+		last_bit := l & mask
+		l = l >> bit_per_sym
+		output = append(output, last_bit)
+	}
+	slices.Reverse(output)
+	return output
+}
 
 const sampleRate = 44100.0
 const preamble_duration = 500 * time.Millisecond
@@ -28,19 +59,25 @@ const preamble_duration = 500 * time.Millisecond
 const preamble_start_freq = 5000.0
 const preamble_final_freq = 10000.0
 
-const slice_duration = 30 * time.Millisecond
-const slice_inner_duration = 13 * time.Millisecond
+const slice_duration = 20 * time.Millisecond
+const slice_inner_duration = 3 * time.Millisecond
 const slice_num = 8
 // the issue with this is: the bigger this is we can tollerant weaker signals but the possibility 
 // of misidentification increases
-const cutoff_variance_preamble = 1e7
+const cutoff_variance_preamble = 1e6
 
 // const self_correction_after_sym = 8 // do a self correction every 8 symbols
 
 type BitString = []int
 
+// is_idle := true
+var is_idle bool
 func sig_to_energy_at_freq(to_analyze []float64) []float64 {
 	spectrum := fft.FFTReal(to_analyze)
+	// if !is_idle {
+	// 	fmt.Printf("%v", to_analyze)
+	// 	fmt.Printf("%v", spectrum)
+	// }
 	
 	L := len(to_analyze)
 
@@ -70,6 +107,7 @@ func get_energy_by_sym(energy []float64, sym int, fs float64, L int) float64 {
 }
 
 func main() {
+	is_idle = true
 	ctx, err := malgo.InitContext(nil, malgo.ContextConfig{}, func(message string) {
 		// fmt.Printf("LOG <%v>\n", message)
 	})
@@ -93,8 +131,12 @@ func main() {
 	chirp_rate := (preamble_final_freq - preamble_start_freq) / preamble_duration.Seconds()
 
 	frameCountAll := 0
-	is_idle := true
 	received := BitString{}
+
+	packet_length := 0
+	// packet_rest := BitString{}
+	do_offset := 0
+
 
 	onRecvFrames := func(pSample2, pSample []byte, framecount uint32) {
 		if(framecount > uint32(rb.Length())) {
@@ -136,13 +178,13 @@ func main() {
 					delta := avg_freq - max_energy_freq + freq_shift
 					variance += delta * delta 
 				}
+				fmt.Printf("Variance: %f\n", variance)
 				if variance < cutoff_variance_preamble {
 					fmt.Println("Preamble detected!")
 					fmt.Printf("Receiving: ")
 					is_idle = false
 					frameCountAll = 0
 				}
-				// fmt.Println("We have a total variance of %lf", variance)
 			}
 			// we reset and start to count frames we have
 		} else {
@@ -167,9 +209,24 @@ func main() {
 				// we know that ratio = i / sym_num
 
 				sym := int(math.Round(ratio * sym_num))
-				// fmt.Printf("[%f %f %f] %f => %d\n", modulate_low_freq, modulate_high_freq, max_energy_freq, ratio, sym)
 				received = append(received, sym)
 				fmt.Printf("%d ", sym)
+				if len(received) == do_offset + 1 && sym >= sym_num {
+					// magic
+					do_offset += 1
+					fmt.Printf("[discard] ")
+				} else if len(received) - do_offset <= len_length {
+					packet_length = (packet_length << bit_per_sym) | received[len(received)-1]
+				// } else if len(received) - do_offset <= len_length + len_hash {
+				// 	packet_hash = (packet_hash << bit_per_sym) | received[len(received)-1]
+				} else if len(received) - do_offset == len_length + packet_length {
+					// packet_rest = received[len_length + len_hash:]
+					modulo := received[do_offset+len_length]
+					packet_hash := received[do_offset+len_length+1:do_offset+len_length+len_hash+1]
+					packet_data := received[do_offset+len_length+len_hash+1:]
+					fmt.Printf("Got packet of length %d with modulo %d, hash %v, content %v", packet_length, modulo, packet_hash, packet_data)
+					os.Exit(0)
+				}
 
 				if false {
 				// if len(received) >= 2 {

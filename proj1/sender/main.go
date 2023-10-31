@@ -12,18 +12,23 @@ import (
 
 	"fmt"
 	"math"
+	"math/rand"
 )
 
-const modulate_duration = 700 * time.Millisecond
+const modulate_duration = 100 * time.Millisecond
 const modulate_low_freq = 500.0
 const modulate_high_freq = 15000.0
 
 const bit_per_sym = 10
+const bit_psk_per_sym = 2 // (10 - 2) = 8 bits use FSK
+
 const sym_num = 1 << bit_per_sym
 
 const preamble_duration = 500 * time.Millisecond
 const preamble_start_freq = 5000.0
 const preamble_final_freq = 10000.0
+
+const len_length = 2
 
 type BitString = []int
 
@@ -35,6 +40,14 @@ func read_bitstring(s string) BitString {
 		} else {
 			out[i] = 1
 		}
+	}
+	return out
+}
+
+func random_bit_string_of_length(l int) BitString {
+	out := make(BitString, l)
+	for i := 0; i < len(out); i++ {
+		out[i] = rand.Intn(2)
 	}
 	return out
 }
@@ -51,7 +64,7 @@ func main() {
 	chk(err)
 	<-ready
 
-	msg := read_bitstring("000000000000000000000000000000")
+	msg := random_bit_string_of_length(100)
 	modulate(c, msg, opts.SampleRate)
 }
 
@@ -157,7 +170,6 @@ func encode_int(l int) BitString {
 	return output
 }
 
-
 const len_hash = 4
 func calculate_hash(msg BitString) BitString {
 	ret := 0
@@ -214,8 +226,9 @@ func convert_base(message BitString, bit_per_sym int) BitString {
 func modulate(c *oto.Context, message BitString, sampleRate int) {
 
 	fmt.Printf("Trying to modulate %v\n", message)
+	modulo := len(message) % bit_per_sym
 	message = convert_base(message, bit_per_sym)
-	fmt.Printf("We got %v after converting to 2^%d base", message, bit_per_sym)
+	fmt.Printf("We got %v after converting to 2^%d base, modulo is %d\n", message, bit_per_sym, modulo)
 
 	fmt.Println("Sending preamble")
 	preamble_sig := c.NewPlayer(&PreambleSig{
@@ -229,19 +242,21 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	hash := calculate_hash(message)
 	fmt.Printf("Calculating Hash, got %v\n", hash)
 
-	length := len(message) + len(hash) // CRC is of fixed length so we're safe to do this
+	length := len(message) + 1 + len(hash)
+	// the 1 above is for module
 	length_encoded := encode_int(length)
 
 	// we fix the length to 16bit
-	if len(length_encoded) > 4 {
+	if len(length_encoded) > len_length {
 		panic("message too long")
 	}
-	length_encoded = pad_bitstring(4, length_encoded)
+	length_encoded = pad_bitstring(len_length, length_encoded)
 
-	fmt.Printf("Encoding length(data+CRC): %d, encoded as %v\n", length, length_encoded)
-	fmt.Printf("Trying to modulate %v and prepend CRC\n", message)
+	fmt.Printf("Encoding length(data+hash): %d, encoded as %v\n", length, length_encoded)
+	// fmt.Printf("Trying to modulate %v and prepend CRC\n", message)
 
-	output := append(length_encoded, hash...)
+	output := append(length_encoded, modulo)
+	output = append(output, hash...)
 	output = append(output, message...)
 
 	fmt.Printf("Got whole packet %v\n", output)
