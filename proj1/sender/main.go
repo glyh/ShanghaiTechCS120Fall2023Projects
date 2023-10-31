@@ -15,8 +15,10 @@ import (
 )
 
 const modulate_duration = 700 * time.Millisecond
-const zero_freq = 1000.0
-const one_freq = 9000.0
+const bit_per_sym = 4
+const sym_num = 1 << bit_per_sym
+const modulate_low_freq = 1000.0
+const modulate_high_freq = 40000.0
 
 const preamble_duration = 500 * time.Millisecond
 const preamble_start_freq = 5000.0
@@ -54,7 +56,7 @@ func main() {
 
 type DataSig struct {
 	data BitString
-	low []float32
+	sym_mod [][]float32
 	high []float32
 	offset int
 	sampleRate int
@@ -121,24 +123,22 @@ func (p *PreambleSig) Read(buf []byte) (int, error) {
 	return len(buf) / 4 * 4, nil
 }
 
-func modulate_bit(b bool, sampleRate float64) []float32 {
+func modulate_syms(sampleRate float64) [][]float32 {
 	sampleNum := int(math.Ceil(modulate_duration.Seconds() * sampleRate))
-	result := make([]float32, sampleNum)
-
-	freq := zero_freq
-	if (b) {
-		freq = one_freq
+	ret := make([][]float32, sym_num)
+	for i := 0; i < sym_num; i++ {
+			ret[i] = make([]float32, sampleNum)
+			ratio := float64(i) / float64(sym_num)
+			freq := modulate_low_freq * ratio + modulate_high_freq * (1 - ratio) 
+			phase := 0.0
+			phaseDelta := 2 * math.Pi / sampleRate
+			
+			for j := 0; j < sampleNum; j++ {
+				ret[i][j] = float32(math.Sin(freq * phase))
+				phase = math.Mod(phase + phaseDelta, 2 * math.Pi)
+			} 
 	}
-
-	phase := 0.0
-	phaseDelta := 2 * math.Pi / sampleRate
-	
-	for i := 0; i < sampleNum; i++ {
-		result[i] = float32(math.Sin(freq * phase))
-		phase = math.Mod(phase + phaseDelta, 2 * math.Pi)
-	} 
-
-	return result
+	return ret
 }
 
 func encode_int(l int) BitString {
@@ -195,8 +195,7 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	preamble_sig.Play()
 	time.Sleep(preamble_duration)
 
-	one_modulated := modulate_bit(true, float64(sampleRate))
-	zero_modulated := modulate_bit(false, float64(sampleRate))
+	modulated_syms := modulate_syms(float64(sampleRate)) 
 
 	crc := calculate_crc(message)
 	fmt.Printf("Calculating CRC, got %v\n", crc)
@@ -220,7 +219,7 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	output = do_4b5b(output)
 	fmt.Printf("4B5B encoded as %v\n", output)
 
-	data_sig := c.NewPlayer(&DataSig{data: output, high: one_modulated, low: zero_modulated, sampleRate: sampleRate})
+	data_sig := c.NewPlayer(&DataSig{data: output, sym_mod: modulated_syms, sampleRate: sampleRate})
 	data_sig.Play()
 	time.Sleep(time.Duration(len(output) + 1) * modulate_duration)
 
