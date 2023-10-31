@@ -16,10 +16,10 @@ const shift_duration = 100 * time.Millisecond
 const modulate_duration_gap = 200 * time.Millisecond
 
 const modulate_duration = 700 * time.Millisecond
-const modulate_low_freq = 2000.0
-const modulate_high_freq = 20000.0
+const modulate_low_freq = 500.0
+const modulate_high_freq = 15000.0
 
-const bit_per_sym = 5
+const bit_per_sym = 10
 const sym_num = 1 << bit_per_sym
 
 const sampleRate = 44100.0
@@ -37,7 +37,7 @@ const cutoff_variance_preamble = 1e7
 
 // const self_correction_after_sym = 8 // do a self correction every 8 symbols
 
-type BitString = []byte
+type BitString = []int
 
 func sig_to_energy_at_freq(to_analyze []float64) []float64 {
 	spectrum := fft.FFTReal(to_analyze)
@@ -63,7 +63,7 @@ func arg_max(s []float64) int {
 	return ans
 }
 
-func get_energy_by_sym(energy []float64, sym byte, fs float64, L int) float64 {
+func get_energy_by_sym(energy []float64, sym int, fs float64, L int) float64 {
 	ratio := float64(sym) / float64(sym_num)
 	freq_expect := ratio * modulate_low_freq + (1 - ratio) * modulate_high_freq
 	return energy[int(freq_expect * float64(L) / fs)]
@@ -142,7 +142,7 @@ func main() {
 					is_idle = false
 					frameCountAll = 0
 				}
-				fmt.Println("We have a total variance of %lf", variance)
+				// fmt.Println("We have a total variance of %lf", variance)
 			}
 			// we reset and start to count frames we have
 		} else {
@@ -167,7 +167,8 @@ func main() {
 				// we know that ratio = i / sym_num
 
 				sym := int(math.Round(ratio * sym_num))
-				received = append(received, byte(sym))
+				// fmt.Printf("[%f %f %f] %f => %d\n", modulate_low_freq, modulate_high_freq, max_energy_freq, ratio, sym)
+				received = append(received, sym)
 				fmt.Printf("%d ", sym)
 
 				if false {
