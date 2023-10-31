@@ -13,11 +13,12 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	// "os"
 )
 
-const modulate_duration = 100 * time.Millisecond
+const modulate_duration = 120 * time.Millisecond
 const modulate_low_freq = 500.0
-const modulate_high_freq = 15000.0
+const modulate_high_freq = 18000.0
 
 const bit_per_sym = 10
 const bit_psk_per_sym = 2 // (10 - 2) = 8 bits use FSK
@@ -25,8 +26,8 @@ const bit_psk_per_sym = 2 // (10 - 2) = 8 bits use FSK
 const sym_num = 1 << bit_per_sym
 
 const preamble_duration = 500 * time.Millisecond
-const preamble_start_freq = 5000.0
-const preamble_final_freq = 10000.0
+const preamble_start_freq = 100.0
+const preamble_final_freq = 500.0
 
 const len_length = 2
 
@@ -118,7 +119,7 @@ type PreambleSig struct {
 }
 
 func (p *PreambleSig) Read(buf []byte) (int, error) {
-	chirp_rate := (preamble_final_freq - preamble_start_freq) / preamble_duration.Seconds()
+	chirp_rate := (float64(preamble_final_freq) - preamble_start_freq) / preamble_duration.Seconds()
 	fs := float64(p.sampleRate)
 	length := int(fs * preamble_duration.Seconds())
 	for i := 0; i < len(buf) / 4; i++ {
@@ -236,6 +237,7 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 		sampleRate: sampleRate })
 	preamble_sig.Play()
 	time.Sleep(preamble_duration)
+	// os.Exit(0)
 
 	modulated_syms := modulate_syms(float64(sampleRate)) 
 

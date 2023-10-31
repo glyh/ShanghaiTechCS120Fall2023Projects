@@ -14,12 +14,12 @@ import (
         "github.com/mjibson/go-dsp/fft"
 )
 
-const shift_duration = 100 * time.Millisecond
+const shift_duration = 120 * time.Millisecond
 const modulate_duration_gap = 20 * time.Millisecond
 
 const modulate_duration = 100 * time.Millisecond
 const modulate_low_freq = 500.0
-const modulate_high_freq = 15000.0
+const modulate_high_freq = 18000.0
 const bit_per_sym = 10
 const sym_num = 1 << bit_per_sym
 
@@ -56,15 +56,15 @@ func encode_int(l int) BitString {
 const sampleRate = 44100.0
 const preamble_duration = 500 * time.Millisecond
 // in general we want higher preamble freqency to distinguish from the noises
-const preamble_start_freq = 5000.0
-const preamble_final_freq = 10000.0
+const preamble_start_freq = 100.0
+const preamble_final_freq = 500.0
 
-const slice_duration = 20 * time.Millisecond
+const slice_duration = 15 * time.Millisecond
 const slice_inner_duration = 3 * time.Millisecond
 const slice_num = 8
 // the issue with this is: the bigger this is we can tollerant weaker signals but the possibility 
 // of misidentification increases
-const cutoff_variance_preamble = 1e6
+const cutoff_variance_preamble = 0.07
 
 // const self_correction_after_sym = 8 // do a self correction every 8 symbols
 
@@ -126,7 +126,7 @@ func main() {
 	data_width := int(malgo.SampleSizeInBytes(deviceConfig.Capture.Format))
 	samples_required := int(math.Ceil(preamble_duration.Seconds() * sampleRate))
 	samples_required = max(samples_required, int(math.Ceil(2 * modulate_duration.Seconds() * sampleRate)))
-	rb := newRb(samples_required * 5)
+	rb := newRb(samples_required * 10)
 
 	chirp_rate := (preamble_final_freq - preamble_start_freq) / preamble_duration.Seconds()
 
@@ -162,7 +162,7 @@ func main() {
 			if frameCountAll >= samples_required {
 				variance := 0.0
 				freq_shift := 0.0
-				for i := 0; i < slice_num; i++ {
+				for i := 1; i < slice_num + 1; i++ {
 					to_analyze := rb.CopyStrideRight(i * slice_width + slice_inner_width, slice_width - 2 * slice_inner_width)
 
 					energy := sig_to_energy_at_freq(to_analyze)
@@ -171,11 +171,11 @@ func main() {
 					max_energy_freq := sampleRate * float64(arg_max(energy)) / float64(L)
 
 					avg_freq := preamble_final_freq - (float64(i) + 0.5) * slice_duration.Seconds() * chirp_rate
-					// if i == 0 && math.Abs(avg_freq - max_energy_freq) < slice_duration.Seconds() * chirp_rate {
-					// 	freq_shift = max_energy_freq - freq_shift
-					// }
+					if i == 0 && math.Abs(avg_freq - max_energy_freq) < slice_duration.Seconds() * chirp_rate {
+						freq_shift = max_energy_freq - avg_freq
+					}
 					// fmt.Printf("We expect frequency %f\n", avg_freq)
-					delta := avg_freq - max_energy_freq + freq_shift
+					delta := (avg_freq - max_energy_freq + freq_shift) / avg_freq
 					variance += delta * delta 
 				}
 				fmt.Printf("Variance: %f\n", variance)
@@ -183,11 +183,14 @@ func main() {
 					fmt.Println("Preamble detected!")
 					fmt.Printf("Receiving: ")
 					is_idle = false
-					frameCountAll = 0
+					// i is enumerate from 1, we kind of expect this 
+					time_shift := freq_shift / chirp_rate + slice_duration.Seconds()
+					frameCountAll = int(time_shift) * sampleRate
 				}
 			}
 			// we reset and start to count frames we have
 		} else {
+			if frameCountAll <= 0 { return }
 			// we're in working mode
 			bits_read := len(received)
 			modulated_width := int(math.Ceil(modulate_duration.Seconds() * sampleRate))
@@ -211,20 +214,24 @@ func main() {
 				sym := int(math.Round(ratio * sym_num))
 				received = append(received, sym)
 				fmt.Printf("%d ", sym)
-				if len(received) == do_offset + 1 && sym >= sym_num {
+				if len(received) == do_offset + 1 && (sym >= sym_num || sym < 0) {
 					// magic
 					do_offset += 1
 					fmt.Printf("[discard] ")
 				} else if len(received) - do_offset <= len_length {
 					packet_length = (packet_length << bit_per_sym) | received[len(received)-1]
+					if len(received) - do_offset == len_length && packet_length == 0 {
+						do_offset += 1
+						fmt.Printf("[ignore leading 0]")
+					}
 				// } else if len(received) - do_offset <= len_length + len_hash {
 				// 	packet_hash = (packet_hash << bit_per_sym) | received[len(received)-1]
-				} else if len(received) - do_offset == len_length + packet_length {
+				} else if len(received) - do_offset == len_length + packet_length + 1 {
 					// packet_rest = received[len_length + len_hash:]
 					modulo := received[do_offset+len_length]
 					packet_hash := received[do_offset+len_length+1:do_offset+len_length+len_hash+1]
 					packet_data := received[do_offset+len_length+len_hash+1:]
-					fmt.Printf("Got packet of length %d with modulo %d, hash %v, content %v", packet_length, modulo, packet_hash, packet_data)
+					fmt.Printf("\nGot packet of length %d with modulo %d, hash %v, content %v", packet_length, modulo, packet_hash, packet_data)
 					os.Exit(0)
 				}
 
