@@ -33,7 +33,7 @@ type BitString = []byte
 
 func main() {
 	ctx, err := malgo.InitContext(nil, malgo.ContextConfig{}, func(message string) {
-		fmt.Printf("LOG <%v>\n", message)
+		// fmt.Printf("LOG <%v>\n", message)
 	})
 	chk(err)
 	defer func() {
@@ -148,7 +148,7 @@ func main() {
 		}
 	}
 
-	fmt.Println("Recording...")
+	fmt.Println("Waiting for sender to send data")
 	captureCallbacks := malgo.DeviceCallbacks{
 		Data: onRecvFrames,
 	}
@@ -159,8 +159,8 @@ func main() {
 	err = device.Start()
 	chk(err)
 
-	fmt.Println("Press Enter to stop recording...")
-	fmt.Scanln()
+	fmt.Println("Press Enter to exit...")
+	fmt.Scanln()                                   
 }
 
 
