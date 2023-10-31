@@ -18,7 +18,10 @@ import (
 const modulate_duration_gap = 20 * time.Millisecond
 const modulate_duration = 100 * time.Millisecond
 const modulate_low_freq = 500.0
-const modulate_high_freq = 18000.0
+const modulate_high_freq = 17000.0
+const freq_step = 20
+const freq_ranges = 10
+const freq_range_length = (modulate_high_freq - modulate_low_freq) / freq_ranges
 
 const bit_per_sym = 10
 const sym_num = 1 << bit_per_sym
@@ -102,11 +105,11 @@ func arg_max(s []float64) int {
 	return ans
 }
 
-func get_energy_by_sym(energy []float64, sym int, fs float64, L int) float64 {
-	ratio := float64(sym) / float64(sym_num)
-	freq_expect := ratio * modulate_low_freq + (1 - ratio) * modulate_high_freq
-	return energy[int(freq_expect * float64(L) / fs)]
-}
+// func get_energy_by_sym(energy []float64, sym int, fs float64, L int) float64 {
+// 	ratio := float64(sym) / float64(sym_num)
+// 	freq_expect := ratio * modulate_low_freq + (1 - ratio) * modulate_high_freq
+// 	return energy[int(freq_expect * float64(L) / fs)]
+// }
 
 func main() {
 	is_idle = true
@@ -204,15 +207,28 @@ func main() {
 				L := len(to_analyze)
 				energy_cur := sig_to_energy_at_freq(to_analyze)
 
-				// energy[i] correponds to frequency Fs * i/L
-				// let Fs * i/L = zero_freq, then i = zero_freq / Fs * L
-				max_energy_freq := sampleRate * float64(arg_max(energy_cur)) / float64(L)
-				// say max_energy_freq = ratio * modulate_low_freq + (1 - ratio) * modulate_high_freq
-				// then ratio = (modulate_high_freq - max_energy_freq) / (modulate_high_freq - modulate_low_freq)
-				ratio := (modulate_high_freq - max_energy_freq) / (modulate_high_freq - modulate_low_freq)
-				// we know that ratio = i / sym_num
+				sym := 0
+				for k := 0; k < freq_ranges; k++ {
+					start_freq := modulate_low_freq + k * freq_range_length 
+					end_freq := modulate_low_freq + (k + 1) * freq_range_length 
+					// Fs * i_start / L = start_freq 
+					i_start := int(start_freq * L / sampleRate)
+					i_end := int(end_freq * L / sampleRate)
+					max_energy_freq := sampleRate * float64(arg_max(energy_cur[i_start:i_end])) / float64(L)
+					// max_energy_freq = start_freq + part * 20
+					part := int(max_energy_freq - float64(start_freq)) / freq_step
+					sym = sym << 3 | part
+				}
 
-				sym := int(math.Round(ratio * sym_num))
+				// // energy[i] correponds to frequency Fs * i/L
+				// // let Fs * i/L = zero_freq, then i = zero_freq / Fs * L
+				// max_energy_freq := sampleRate * float64(arg_max(energy_cur)) / float64(L)
+				// // say max_energy_freq = ratio * modulate_low_freq + (1 - ratio) * modulate_high_freq
+				// // then ratio = (modulate_high_freq - max_energy_freq) / (modulate_high_freq - modulate_low_freq)
+				// ratio := (modulate_high_freq - max_energy_freq) / (modulate_high_freq - modulate_low_freq)
+				// // we know that ratio = i / sym_num
+				//
+				// sym := int(math.Round(ratio * sym_num))
 				received = append(received, sym)
 				fmt.Printf("%d ", sym)
 				// first bit of length must be 0 if we never sent data over length 10000
@@ -237,44 +253,44 @@ func main() {
 					os.Exit(0)
 				}
 
-				if false {
-				// if len(received) >= 2 {
-
-					cur_sym := received[len(received) - 1]
-					last_sym := received[len(received) - 2]
-					if cur_sym != last_sym {
-						shift_width := int(math.Ceil(shift_duration.Seconds() * sampleRate))
-						// we got two different adjacent signal hence we can do correction here.
-						// note we count from right to left
-						current_end := (left_over + (bits_expected - bits_read - 1) * modulated_width)
-						last_end := current_end + modulated_width
-						energy_last := sig_to_energy_at_freq(rb.CopyStrideRight(last_end, modulated_width))
-
-
-						last_shift_right_end := last_end - shift_width
-						energy_last_shift_right := sig_to_energy_at_freq(rb.CopyStrideRight(last_shift_right_end, modulated_width))
-						current_shift_left_end := current_end + shift_width
-						energy_current_shift_left := sig_to_energy_at_freq(rb.CopyStrideRight(current_shift_left_end, modulated_width))
-
-						energy_cur_at_freq := get_energy_by_sym(energy_cur, cur_sym, sampleRate, L)
-						energy_cur_shift_left_at_freq := get_energy_by_sym(energy_current_shift_left, cur_sym, sampleRate, L)
-						energy_last_at_freq := get_energy_by_sym(energy_last, last_sym, sampleRate, L)
-						energy_last_shift_right_at_freq := get_energy_by_sym(energy_last_shift_right, last_sym, sampleRate, L)
-						// fmt.Printf("(%f, %f) ", (energy_cur_at_freq - energy_cur_shift_left_at_freq)/ energy_cur_at_freq, (energy_last_at_freq - energy_last_shift_right_at_freq) / energy_last_at_freq)
-						if energy_cur_shift_left_at_freq > energy_cur_at_freq && energy_last_shift_right_at_freq < energy_last_at_freq {
-							// we should shift left
-							// simulated by adding some frames at the very beginning
-							frameCountAll += shift_width
-							fmt.Printf("← ")
-						} else if energy_cur_shift_left_at_freq < energy_cur_at_freq && energy_last_shift_right_at_freq > energy_last_at_freq{
-							// we should shift right
-							// simulated by removing some frames at the very beginning
-							frameCountAll -= shift_width
-							fmt.Printf("→ ")
-						}
-					}
-
-				} 
+				// if false {
+				// // if len(received) >= 2 {
+				//
+				// 	cur_sym := received[len(received) - 1]
+				// 	last_sym := received[len(received) - 2]
+				// 	if cur_sym != last_sym {
+				// 		shift_width := int(math.Ceil(shift_duration.Seconds() * sampleRate))
+				// 		// we got two different adjacent signal hence we can do correction here.
+				// 		// note we count from right to left
+				// 		current_end := (left_over + (bits_expected - bits_read - 1) * modulated_width)
+				// 		last_end := current_end + modulated_width
+				// 		energy_last := sig_to_energy_at_freq(rb.CopyStrideRight(last_end, modulated_width))
+				//
+				//
+				// 		last_shift_right_end := last_end - shift_width
+				// 		energy_last_shift_right := sig_to_energy_at_freq(rb.CopyStrideRight(last_shift_right_end, modulated_width))
+				// 		current_shift_left_end := current_end + shift_width
+				// 		energy_current_shift_left := sig_to_energy_at_freq(rb.CopyStrideRight(current_shift_left_end, modulated_width))
+				//
+				// 		energy_cur_at_freq := get_energy_by_sym(energy_cur, cur_sym, sampleRate, L)
+				// 		energy_cur_shift_left_at_freq := get_energy_by_sym(energy_current_shift_left, cur_sym, sampleRate, L)
+				// 		energy_last_at_freq := get_energy_by_sym(energy_last, last_sym, sampleRate, L)
+				// 		energy_last_shift_right_at_freq := get_energy_by_sym(energy_last_shift_right, last_sym, sampleRate, L)
+				// 		// fmt.Printf("(%f, %f) ", (energy_cur_at_freq - energy_cur_shift_left_at_freq)/ energy_cur_at_freq, (energy_last_at_freq - energy_last_shift_right_at_freq) / energy_last_at_freq)
+				// 		if energy_cur_shift_left_at_freq > energy_cur_at_freq && energy_last_shift_right_at_freq < energy_last_at_freq {
+				// 			// we should shift left
+				// 			// simulated by adding some frames at the very beginning
+				// 			frameCountAll += shift_width
+				// 			fmt.Printf("← ")
+				// 		} else if energy_cur_shift_left_at_freq < energy_cur_at_freq && energy_last_shift_right_at_freq > energy_last_at_freq{
+				// 			// we should shift right
+				// 			// simulated by removing some frames at the very beginning
+				// 			frameCountAll -= shift_width
+				// 			fmt.Printf("→ ")
+				// 		}
+				// 	}
+				//
+				// } 
 			}
 		}
 	}

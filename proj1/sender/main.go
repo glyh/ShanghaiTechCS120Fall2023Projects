@@ -18,10 +18,20 @@ import (
 
 const modulate_duration = 100 * time.Millisecond
 const modulate_low_freq = 500.0
-const modulate_high_freq = 18000.0
+const modulate_high_freq = 17000.0
+const freq_step = 20
+const freq_ranges = 10
+const freq_range_length = (modulate_high_freq - modulate_low_freq) / freq_ranges
 
-const bit_per_sym = 10
-const bit_psk_per_sym = 2 // (10 - 2) = 8 bits use FSK
+
+// the finest difference we can tell with sample rate fs is fs/L where L is the length of the signal(L = t * fs), thus to differentiate by 20hz, 1/t = 20hz, t = 1/20s = 500ms
+
+// we split frequency [500, 17000) into 10 ranges, [500 + 165i, 665 + 165i]
+// in each range we have 8 possible frequency: 
+// 500 + 165i, 520 + 165i, 540 + 165i, 560 + 165i, 580 + 165i, 600 + 165i, 620 + 165i, 640 + 165i, 
+// thus we have 8^10 = 2^30 possibilities at each time slices 
+
+const bit_per_sym = 30
 
 const sym_num = 1 << bit_per_sym
 
@@ -29,7 +39,7 @@ const preamble_duration = 500 * time.Millisecond
 const preamble_start_freq = 100.0
 const preamble_final_freq = 500.0
 
-const len_length = 3
+const len_length = 2
 
 type BitString = []int
 
@@ -65,29 +75,47 @@ func main() {
 	chk(err)
 	<-ready
 
-	msg := random_bit_string_of_length(100)
+	msg := random_bit_string_of_length(10000)
 	modulate(c, msg, opts.SampleRate)
 }
 
 type DataSig struct {
 	data BitString
-	sym_mod [][]float32
+	// sym_mod [][]float32
 	// high []float32
 	offset int
 	sampleRate int
 }
 
+// func modulate_syms(sampleRate float64) [][]float32 {
+// 	sampleNum := int(math.Ceil(modulate_duration.Seconds() * sampleRate))
+// 	ret := make([][]float32, sym_num)
+// 	for i := 0; i < sym_num; i++ {
+// 			phase := 0.0
+// 			phaseDelta := 2 * math.Pi / sampleRate
+//
+// 			ret[i] = make([]float32, sampleNum)
+// 			// ratio := float64(i) / float64(sym_num)
+// 			// freq := modulate_low_freq * ratio + modulate_high_freq * (1 - ratio) 
+// 			
+// 			for j := 0; j < sampleNum; j++ {
+// 				ret[i][j] = 0
+// 			// float32(math.Sin(freq * phase))
+// 				for k := 0; k < freq_ranges; k++ {
+// 					index_at_range_k := (i >> (3 * k)) & ((1 << 3) - 1)
+// 					freq_at_range_k := float64(index_at_range_k * freq_step + modulate_low_freq + 165 * k)
+// 					ret[i][j] += float32(math.Sin(freq_at_range_k * phase))
+// 				}
+// 				phase = math.Mod(phase + phaseDelta, 2 * math.Pi)
+// 			} 
+// 	}
+// 	return ret
+// }
+
+
 func (c *DataSig) Read(buf []byte) (int, error) {
 	// number of frame per single symbol
-	frame_per_sym := len(c.sym_mod[0])
-	// // how many symbols have we sent
-	// symbol_sent := c.offset / frame_per_sym
-	// // how many bits have we sent
-	// bit_sent := symbol_sent * bit_per_sym
-	// // if we already send enough symbol to represent all the data in c.data, terminate
-	// if symbol_sent * bit_per_sym >= len(c.data) {
-	// 	return 0, nil
-	// }
+	frame_per_sym := int(math.Ceil(float64(c.sampleRate) * modulate_duration.Seconds()))
 
 	for buf_offset := 0; buf_offset < len(buf); buf_offset += 4 {
 		symbol_sent := c.offset / frame_per_sym
@@ -99,8 +127,15 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 		if symbol_frame_id == 0 {
 			fmt.Printf("%d ", sym)
 		}
-		cur_f := c.sym_mod[sym][symbol_frame_id]
-		bs := math.Float32bits(cur_f)
+		t := float64(symbol_frame_id) / float64(c.sampleRate)
+		cur_f := 0.0
+		for k := 0; k < freq_ranges; k++ {
+			index_at_range_k := (sym >> (3 * k)) & ((1 << 3) - 1)
+			freq_at_range_k := float64(index_at_range_k * freq_step + modulate_low_freq + 165 * k)
+			cur_f += math.Sin(2 * math.Pi * freq_at_range_k * t)
+		}
+		// c.sym_mod[sym][symbol_frame_id]
+		bs := math.Float32bits(float32(cur_f))
 
 		buf[buf_offset] = byte(bs)
 		buf[buf_offset+1] = byte(bs>>8)
@@ -138,25 +173,6 @@ func (p *PreambleSig) Read(buf []byte) (int, error) {
 		p.offset += 1
 	}
 	return len(buf) / 4 * 4, nil
-}
-
-func modulate_syms(sampleRate float64) [][]float32 {
-	sampleNum := int(math.Ceil(modulate_duration.Seconds() * sampleRate))
-	ret := make([][]float32, sym_num)
-	for i := 0; i < sym_num; i++ {
-			ret[i] = make([]float32, sampleNum)
-			ratio := float64(i) / float64(sym_num)
-			freq := modulate_low_freq * ratio + modulate_high_freq * (1 - ratio) 
-			// fmt.Printf("frequency for %d is %f\n", i, freq)
-			phase := 0.0
-			phaseDelta := 2 * math.Pi / sampleRate
-			
-			for j := 0; j < sampleNum; j++ {
-				ret[i][j] = float32(math.Sin(freq * phase))
-				phase = math.Mod(phase + phaseDelta, 2 * math.Pi)
-			} 
-	}
-	return ret
 }
 
 func encode_int(l int) BitString {
@@ -239,7 +255,7 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	time.Sleep(preamble_duration)
 	// os.Exit(0)
 
-	modulated_syms := modulate_syms(float64(sampleRate)) 
+	// modulated_syms := modulate_syms(float64(sampleRate)) 
 
 	hash := calculate_hash(message)
 	fmt.Printf("Calculating Hash, got %v\n", hash)
@@ -265,7 +281,7 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	// output = do_4b5b(output)
 	// fmt.Printf("4B5B encoded as %v\n", output)
 
-	data_sig := c.NewPlayer(&DataSig{data: output, sym_mod: modulated_syms, sampleRate: sampleRate})
+	data_sig := c.NewPlayer(&DataSig{data: output, sampleRate: sampleRate})
 	data_sig.Play()
 	time.Sleep(time.Duration(math.Ceil(float64(len(output))) + 1.0) * modulate_duration)
 
