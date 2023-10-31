@@ -57,33 +57,35 @@ func main() {
 type DataSig struct {
 	data BitString
 	sym_mod [][]float32
-	high []float32
+	// high []float32
 	offset int
 	sampleRate int
 }
 
 func (c *DataSig) Read(buf []byte) (int, error) {
-	sample_len := len(c.high)
-	index := c.offset / sample_len
-	if index >= len(c.data) {
+	// number of frame per single symbol
+	frame_per_sym := len(c.sym_mod[0])
+	// how many symbols have we sent
+	symbol_sent := c.offset / frame_per_sym
+	// how many bits have we sent
+	bit_sent := symbol_sent * bit_per_sym
+	// if we already send enough symbol to represent all the data in c.data, terminate
+	if symbol_sent * bit_per_sym >= len(c.data) {
 		return 0, nil
 	}
-	head := c.offset
-	tail := c.offset + len(buf) / 4
 
-	for ; c.offset < tail; c.offset += 1 {
-		buf_offset := (c.offset - head) * 4
-		cur_index := c.offset / sample_len
-		cur_offset_sig := c.offset % sample_len
-		if cur_index >= len(c.data) {
+	for buf_offset := 0; buf_offset < len(buf); buf_offset += 4 {
+		symbol_sent := c.offset / frame_per_sym
+		bit_sent := symbol_sent * bit_per_sym
+		symbol_frame_id := c.offset % frame_per_sym
+		if bit_sent >= len(c.data) {
 			return buf_offset, nil
 		}
-		cur_bit := c.data[cur_index]
-		cur_f := c.high[cur_offset_sig]
-		if cur_bit == 0 {
-			cur_f = c.low[cur_offset_sig]
+		sym := 0
+		for j := 0; j < bit_per_sym; j++ {
+			sym = (sym << 1) | int(c.data[bit_sent + j])
 		}
-
+		cur_f := c.sym_mod[sym][symbol_frame_id]
 		bs := math.Float32bits(cur_f)
 
 		buf[buf_offset] = byte(bs)
