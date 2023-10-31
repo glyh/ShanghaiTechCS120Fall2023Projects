@@ -250,7 +250,7 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 
 	data_sig := c.NewPlayer(&DataSig{data: output, sym_mod: modulated_syms, sampleRate: sampleRate})
 	data_sig.Play()
-	time.Sleep(time.Duration(math.Ceil(float64(len(output)) / float64(bit_per_sym)) + 1.0) * modulate_duration)
+	time.Sleep(time.Duration(math.Ceil(float64(len(output))) + 1.0) * modulate_duration)
 
 	fmt.Println("Message successfully modulated and played")
 } 
