@@ -174,13 +174,19 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	length := len(message) + len(crc) // CRC is of fixed length so we're safe to do this
 	length_encoded := encode_int(length)
 
+	// we fix the length to 16bit
+	if len(length_encoded) > 16 {
+		panic("message too long")
+	}
+	length_encoded = append(make(BitString, 16 - len(length_encoded)), length_encoded...)
+
 	fmt.Printf("Encoding length(data+CRC): %d, encoded as %v\n", length, length_encoded)
 	length_sig := c.NewPlayer(&DataSig{data: length_encoded, high: one_modulated, low: zero_modulated, sampleRate: sampleRate})
 	length_sig.Play()
 	time.Sleep(time.Duration(len(length_encoded)) * modulate_duration)
 
-	fmt.Printf("Sending separator sequence as silence\n")
-	time.Sleep(modulate_duration)
+	// fmt.Printf("Sending separator sequence as silence\n")
+	// time.Sleep(modulate_duration)
 
 	fmt.Printf("Trying to modulate %v\n", message)
 	data_sig := c.NewPlayer(&DataSig{data: message, high: one_modulated, low: zero_modulated, sampleRate: sampleRate})

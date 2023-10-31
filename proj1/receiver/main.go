@@ -12,7 +12,12 @@ import (
         "github.com/mjibson/go-dsp/fft"
 )
 
-const sampleRate = 44100
+const modulate_duration = 400 * time.Millisecond
+const delta = modulate_duration
+const zero_freq = 1000.0
+const one_freq = 4000.0
+
+const sampleRate = 44100.0
 const preamble_duration = 500 * time.Millisecond
 // in general we want higher preamble freqency to distinguish from the noises
 const preamble_start_freq = 5000.0
@@ -23,6 +28,8 @@ const slice_num = 8
 // the issue with this is: the bigger this is we can tollerant weaker signals but the possibility 
 // of misidentification increases
 const cutoff_variance_preamble = 1e8 
+
+type BitString = []byte
 
 func main() {
 	ctx, err := malgo.InitContext(nil, malgo.ContextConfig{}, func(message string) {
@@ -48,24 +55,23 @@ func main() {
 
 	frameCountAll := 0
 	is_idle := true
+	received := BitString{}
+
 	onRecvFrames := func(pSample2, pSample []byte, framecount uint32) {
+		if(framecount > uint32(rb.Length())) {
+			panic("ring buffer too small")
+		}
+		if len(pSample) % data_width != 0 {
+			panic("weird input: sample bytes length not multiple of data width")
+		}
+
+		frameCountAll += int(framecount)
+		for i := 0; i < len(pSample); i += data_width {
+			bits := binary.LittleEndian.Uint32(pSample[i:i+4])
+			f := math.Float32frombits(bits) 
+			rb.Write(float64(f))
+		}
 		if is_idle {
-
-			if(framecount > uint32(rb.Length())) {
-				panic("ring buffer too small")
-			}
-			if len(pSample) % data_width != 0 {
-				panic("weird input: sample bytes length not multiple of data width")
-			}
-
-			frameCountAll += int(framecount)
-			// TODO: fix this
-			for i := 0; i < len(pSample); i += data_width {
-				bits := binary.LittleEndian.Uint32(pSample[i:i+4])
-				f := math.Float32frombits(bits) 
-				rb.Write(float64(f))
-			}
-
 			// check whether we can start to work, the following conditions need to met: 
 			// 1. we have enough samples to accept a preamble
 			// 2. in the last slice the peak frequency is "around" 8000Hz
@@ -109,9 +115,36 @@ func main() {
 				}
 				fmt.Println("We have a total variance of %lf", variance)
 			}
-			// TODO: clear the ring buffer
+			// we reset and start to count frames we have
+			frameCountAll = 0
 		} else {
 			// we're in working mode
+			bits_read := len(received)
+			modulated_width := int(math.Ceil(modulate_duration.Seconds() * sampleRate))
+			bits_expected := frameCountAll / modulated_width
+			left_over := frameCountAll % modulated_width
+			for ; bits_read < bits_expected; bits_read++ {
+				to_analyze := rb.CopyStrideRight(left_over + (bits_expected - bits_read - 1) * modulated_width, modulated_width)
+				spectrum := fft.FFTReal(to_analyze)
+				L := len(to_analyze)
+
+				energy := make([]float64, L/2+1)
+				energy[0] = cmplx.Abs(spectrum[0]) / float64(L)
+				for i := 1; i < L / 2; i += 1 {
+					energy[i] = 2 * cmplx.Abs(spectrum[i]) / float64(L)
+				}
+				// energy[i] correponds to frequency Fs * i/L
+				// let Fs * i/L = zero_freq, then i = zero_freq / Fs * L
+				energy_high := zero_freq * L / sampleRate
+				energy_low := one_freq * L / sampleRate
+				if energy_high > energy_low {
+					received = append(received, 1)
+					fmt.Printf("Received %d\n", 1)
+				} else {
+					received = append(received, 0)
+					fmt.Printf("Received %d\n", 0)
+				}
+			}
 		}
 	}
 
