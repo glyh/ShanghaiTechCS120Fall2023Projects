@@ -26,10 +26,11 @@ const preamble_start_freq = 5000.0
 const preamble_final_freq = 10000.0
 
 const slice_duration = 30 * time.Millisecond
+const slice_inner_duration = 13 * time.Millisecond
 const slice_num = 8
 // the issue with this is: the bigger this is we can tollerant weaker signals but the possibility 
 // of misidentification increases
-const cutoff_variance_preamble = 1e8
+const cutoff_variance_preamble = 1e7
 
 // const self_correction_after_sym = 8 // do a self correction every 8 symbols
 
@@ -96,17 +97,18 @@ func main() {
 			f := math.Float32frombits(bits) 
 			rb.Write(float64(f))
 		}
-		slice_width := int(math.Ceil(slice_duration.Seconds() * sampleRate))
 		if is_idle {
+			slice_width := int(math.Ceil(slice_duration.Seconds() * sampleRate))
+			slice_inner_width := int(math.Ceil(slice_inner_duration.Seconds() * sampleRate))
 			// check whether we can start to work, the following conditions need to met: 
 			// 1. we have enough samples to accept a preamble
 			// 2. in the last slice the peak frequency is "around" 8000Hz
 			// 3. the peak frequency in the last slice_num slices follows the characteristic of the chirp signal
 			if frameCountAll >= samples_required {
 				variance := 0.0
+				freq_shift := 0.0
 				for i := 0; i < slice_num; i++ {
-					to_analyze := rb.CopyStrideRight(i * slice_width, slice_width)
-					
+					to_analyze := rb.CopyStrideRight(i * slice_width + slice_inner_width, slice_width - 2 * slice_inner_width)
 
 					energy := sig_to_energy_at_freq(to_analyze)
 					L := len(to_analyze)
@@ -125,8 +127,11 @@ func main() {
 					// fmt.Printf("Around frequency %f we have max energy at slice[-%d]\n", max_energy_freq, i)
 
 					avg_freq := preamble_final_freq - (float64(i) + 0.5) * slice_duration.Seconds() * chirp_rate
+					// if i == 0 && math.Abs(avg_freq - max_energy_freq) < slice_duration.Seconds() * chirp_rate {
+					// 	freq_shift = max_energy_freq - freq_shift
+					// }
 					// fmt.Printf("We expect frequency %f\n", avg_freq)
-					delta := avg_freq - max_energy_freq
+					delta := avg_freq - max_energy_freq + freq_shift
 					variance += delta * delta 
 				}
 				if variance < cutoff_variance_preamble {
