@@ -14,10 +14,9 @@ import (
 	"math"
 )
 
-const modulate_duration = 400 * time.Millisecond
-const delta = modulate_duration
+const modulate_duration = 700 * time.Millisecond
 const zero_freq = 1000.0
-const one_freq = 4000.0
+const one_freq = 9000.0
 
 const preamble_duration = 500 * time.Millisecond
 const preamble_start_freq = 5000.0
@@ -212,19 +211,18 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	length_encoded = pad_bitstring(16, length_encoded)
 
 	fmt.Printf("Encoding length(data+CRC): %d, encoded as %v\n", length, length_encoded)
-	length_sig := c.NewPlayer(&DataSig{data: length_encoded, high: one_modulated, low: zero_modulated, sampleRate: sampleRate})
-	length_sig.Play()
-	time.Sleep(time.Duration(len(length_encoded)) * modulate_duration)
-
-	// fmt.Printf("Sending separator sequence as silence\n")
-	// time.Sleep(modulate_duration)
-
 	fmt.Printf("Trying to modulate %v and prepend CRC\n", message)
-	output := append(crc, message...)
-	fmt.Printf("Got %v\n", output)
+
+	output := append(length_encoded, crc...)
+	output = append(output, message...)
+
+	fmt.Printf("Got whole packet %v\n", output)
+	output = do_4b5b(output)
+	fmt.Printf("4B5B encoded as %v\n", output)
+
 	data_sig := c.NewPlayer(&DataSig{data: output, high: one_modulated, low: zero_modulated, sampleRate: sampleRate})
 	data_sig.Play()
-	time.Sleep(time.Duration(len(message)) * modulate_duration + delta)
+	time.Sleep(time.Duration(len(output) + 1) * modulate_duration)
 
 	fmt.Println("Message successfully modulated and played")
 } 
@@ -240,11 +238,13 @@ func chk(err error) {
 }
 
 func do_4b5b(message BitString) BitString {
+	// this is a modified 4B5B where we swap code of 0000 and 0011
+	// since length are very likely to send a zero in the beginning avoiding a bunch of continous one/zero are better
 	map_4b5b := map[byte][]byte {
-		0b0000 : {1, 1, 1, 1, 0},
+		0b0011 : {1, 1, 1, 1, 0},
 		0b0001 : {0, 1, 0, 0, 1},
 		0b0010 : {1, 0, 1, 0, 0},
-		0b0011 : {1, 0, 1, 0, 1},
+		0b0000 : {1, 0, 1, 0, 1},
 		0b0100 : {0, 1, 0, 1, 0},
 		0b0101 : {0, 1, 0, 1, 1},
 		0b0110 : {0, 1, 1, 1, 0},

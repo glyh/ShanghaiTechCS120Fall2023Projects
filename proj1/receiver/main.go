@@ -12,10 +12,12 @@ import (
         "github.com/mjibson/go-dsp/fft"
 )
 
-const modulate_duration = 400 * time.Millisecond
-const delta = modulate_duration
+const shift_duration = 100 * time.Millisecond
+const modulate_duration_gap = 200 * time.Millisecond
+
+const modulate_duration = 700 * time.Millisecond
 const zero_freq = 1000.0
-const one_freq = 4000.0
+const one_freq = 9000.0
 
 const sampleRate = 44100.0
 const preamble_duration = 500 * time.Millisecond
@@ -23,13 +25,35 @@ const preamble_duration = 500 * time.Millisecond
 const preamble_start_freq = 5000.0
 const preamble_final_freq = 10000.0
 
-const slice_duration = 50 * time.Millisecond
+const slice_duration = 30 * time.Millisecond
 const slice_num = 8
 // the issue with this is: the bigger this is we can tollerant weaker signals but the possibility 
 // of misidentification increases
-const cutoff_variance_preamble = 1e8 
+const cutoff_variance_preamble = 1e8
+
+// const self_correction_after_sym = 8 // do a self correction every 8 symbols
 
 type BitString = []byte
+
+func sig_to_energy_at_freq(to_analyze []float64) []float64 {
+	spectrum := fft.FFTReal(to_analyze)
+	
+	L := len(to_analyze)
+
+	energy := make([]float64, L/2+1)
+	energy[0] = cmplx.Abs(spectrum[0]) / float64(L)
+	for i := 1; i < L / 2; i += 1 {
+		energy[i] = 2 * cmplx.Abs(spectrum[i]) / float64(L)
+	}
+	return energy
+}
+
+func get_energy_by_sym(energy []float64, sym byte, fs float64, L int) float64 {
+	if sym == 0 { return energy[int(zero_freq * float64(L) / fs)]
+	} else {
+		return energy[int(one_freq * float64(L) / fs)]
+	}
+}
 
 func main() {
 	ctx, err := malgo.InitContext(nil, malgo.ContextConfig{}, func(message string) {
@@ -49,7 +73,8 @@ func main() {
 
 	data_width := int(malgo.SampleSizeInBytes(deviceConfig.Capture.Format))
 	samples_required := int(math.Ceil(preamble_duration.Seconds() * sampleRate))
-	rb := newRb(samples_required * 2)
+	samples_required = max(samples_required, int(math.Ceil(2 * modulate_duration.Seconds() * sampleRate)))
+	rb := newRb(samples_required * 5)
 
 	chirp_rate := (preamble_final_freq - preamble_start_freq) / preamble_duration.Seconds()
 
@@ -71,26 +96,20 @@ func main() {
 			f := math.Float32frombits(bits) 
 			rb.Write(float64(f))
 		}
+		slice_width := int(math.Ceil(slice_duration.Seconds() * sampleRate))
 		if is_idle {
 			// check whether we can start to work, the following conditions need to met: 
 			// 1. we have enough samples to accept a preamble
 			// 2. in the last slice the peak frequency is "around" 8000Hz
 			// 3. the peak frequency in the last slice_num slices follows the characteristic of the chirp signal
 			if frameCountAll >= samples_required {
-				slice_width := int(math.Ceil(slice_duration.Seconds() * sampleRate))
 				variance := 0.0
 				for i := 0; i < slice_num; i++ {
 					to_analyze := rb.CopyStrideRight(i * slice_width, slice_width)
 					
-					spectrum := fft.FFTReal(to_analyze)
-					
-					L := len(to_analyze)
 
-					energy := make([]float64, L/2+1)
-					energy[0] = cmplx.Abs(spectrum[0]) / float64(L)
-					for i := 1; i < L / 2; i += 1 {
-						energy[i] = 2 * cmplx.Abs(spectrum[i]) / float64(L)
-					}
+					energy := sig_to_energy_at_freq(to_analyze)
+					L := len(to_analyze)
 
 					var max_energy_freq float64
 					var max_energy float64
@@ -112,38 +131,75 @@ func main() {
 				}
 				if variance < cutoff_variance_preamble {
 					fmt.Println("Preamble detected!")
+					fmt.Printf("Receiving: ")
+					is_idle = false
+					frameCountAll = 0
 				}
 				fmt.Println("We have a total variance of %lf", variance)
 			}
 			// we reset and start to count frames we have
-			frameCountAll = 0
 		} else {
 			// we're in working mode
 			bits_read := len(received)
 			modulated_width := int(math.Ceil(modulate_duration.Seconds() * sampleRate))
 			bits_expected := frameCountAll / modulated_width
 			left_over := frameCountAll % modulated_width
+			gap_width := int(math.Ceil(modulate_duration_gap.Seconds() * sampleRate))
 			for ; bits_read < bits_expected; bits_read++ {
-				to_analyze := rb.CopyStrideRight(left_over + (bits_expected - bits_read - 1) * modulated_width, modulated_width)
-				spectrum := fft.FFTReal(to_analyze)
+				// leave slice_width empty so we're more likely get a good result from fourier transform
+				to_analyze := rb.CopyStrideRight(gap_width + left_over + (bits_expected - bits_read - 1) * modulated_width, modulated_width - 2 * gap_width)
 				L := len(to_analyze)
+				energy_cur := sig_to_energy_at_freq(to_analyze)
 
-				energy := make([]float64, L/2+1)
-				energy[0] = cmplx.Abs(spectrum[0]) / float64(L)
-				for i := 1; i < L / 2; i += 1 {
-					energy[i] = 2 * cmplx.Abs(spectrum[i]) / float64(L)
-				}
 				// energy[i] correponds to frequency Fs * i/L
 				// let Fs * i/L = zero_freq, then i = zero_freq / Fs * L
-				energy_high := zero_freq * L / sampleRate
-				energy_low := one_freq * L / sampleRate
+				energy_high := energy_cur[int(one_freq * L / sampleRate)]
+				energy_low := energy_cur[int(zero_freq * L / sampleRate)]
 				if energy_high > energy_low {
 					received = append(received, 1)
-					fmt.Printf("Received %d\n", 1)
+					fmt.Printf("%d ", 1)
 				} else {
 					received = append(received, 0)
-					fmt.Printf("Received %d\n", 0)
+					fmt.Printf("%d ", 0)
 				}
+				if false {
+				// if len(received) >= 2 {
+
+					cur_sym := received[len(received) - 1]
+					last_sym := received[len(received) - 2]
+					if cur_sym != last_sym {
+						shift_width := int(math.Ceil(shift_duration.Seconds() * sampleRate))
+						// we got two different adjacent signal hence we can do correction here.
+						// note we count from right to left
+						current_end := (left_over + (bits_expected - bits_read - 1) * modulated_width)
+						last_end := current_end + modulated_width
+						energy_last := sig_to_energy_at_freq(rb.CopyStrideRight(last_end, modulated_width))
+
+
+						last_shift_right_end := last_end - shift_width
+						energy_last_shift_right := sig_to_energy_at_freq(rb.CopyStrideRight(last_shift_right_end, modulated_width))
+						current_shift_left_end := current_end + shift_width
+						energy_current_shift_left := sig_to_energy_at_freq(rb.CopyStrideRight(current_shift_left_end, modulated_width))
+
+						energy_cur_at_freq := get_energy_by_sym(energy_cur, cur_sym, sampleRate, L)
+						energy_cur_shift_left_at_freq := get_energy_by_sym(energy_current_shift_left, cur_sym, sampleRate, L)
+						energy_last_at_freq := get_energy_by_sym(energy_last, last_sym, sampleRate, L)
+						energy_last_shift_right_at_freq := get_energy_by_sym(energy_last_shift_right, last_sym, sampleRate, L)
+						// fmt.Printf("(%f, %f) ", (energy_cur_at_freq - energy_cur_shift_left_at_freq)/ energy_cur_at_freq, (energy_last_at_freq - energy_last_shift_right_at_freq) / energy_last_at_freq)
+						if energy_cur_shift_left_at_freq > energy_cur_at_freq && energy_last_shift_right_at_freq < energy_last_at_freq {
+							// we should shift left
+							// simulated by adding some frames at the very beginning
+							frameCountAll += shift_width
+							fmt.Printf("← ")
+						} else if energy_cur_shift_left_at_freq < energy_cur_at_freq && energy_last_shift_right_at_freq > energy_last_at_freq{
+							// we should shift right
+							// simulated by removing some frames at the very beginning
+							frameCountAll -= shift_width
+							fmt.Printf("→ ")
+						}
+					}
+
+				} 
 			}
 		}
 	}
