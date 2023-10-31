@@ -49,8 +49,8 @@ func main() {
 	chk(err)
 	<-ready
 
-	msg := read_bitstring("010100111")
-	modulate(c, do_4b5b(msg), opts.SampleRate)
+	msg := read_bitstring("010100111000")
+	modulate(c, msg, opts.SampleRate)
 }
 
 type DataSig struct {
@@ -167,7 +167,7 @@ func calculate_crc(_msg BitString) BitString {
 		crc <<= 1
 		if msg[i] == 1 {
 			crc |= 1
-		  // CRC-16-CCITT
+		  // CRC-16/AUG-CCITT
 			msg[i] ^= 1
 			crc_coeffs := []int{12, 5, 0}
 			for _, offset := range(crc_coeffs) {
