@@ -9,27 +9,29 @@ import (
 	"math"
 	"math/cmplx"
 	"time"
+	"math/big"
 
 	"github.com/gen2brain/malgo"
         "github.com/mjibson/go-dsp/fft"
 )
 
 
-const modulate_duration_gap = 20 * time.Millisecond
-const modulate_duration = 100 * time.Millisecond
-const modulate_low_freq = 500.0
-const modulate_high_freq = 17000.0
-const freq_step = 20
-const freq_ranges = 10
-const freq_range_length = (modulate_high_freq - modulate_low_freq) / freq_ranges
+const mod_duration_gap = 20 * time.Millisecond
+const mod_duration = 500 * time.Millisecond
+const mod_low_freq = 1000.0
+const mod_high_freq = 17000.0
+const mod_width = mod_freq_step - mod_low_freq
+const mod_freq_step = 50.0
+const mod_freq_range_num = 80
+const mod_freq_range_width = mod_width / mod_freq_range_num
+var mod_state_num *big.Int
+var sym_size *big.Int
 
-const bit_per_sym = 10
-const sym_num = 1 << bit_per_sym
+var bit_per_sym int
 
 const shift_duration = 120 * time.Millisecond
 
-const len_length = 3
-const len_hash = 4
+const len_length = 2
 
 func pad_bitstring(length int, msg BitString) BitString {
 	if len(msg) > length {
@@ -38,20 +40,27 @@ func pad_bitstring(length int, msg BitString) BitString {
 	return append(make(BitString, length - len(msg)), msg...)
 }
 
-func calculate_hash(msg BitString) BitString {
-	ret := 0
+func calculate_hash(msg BitString) *big.Int {
+	ret := big.NewInt(0)
 	for i, v := range(msg) {
-		ret ^= i * v
+		prod := big.NewInt(int64(i))
+		prod.Mul(prod, v)
+		ret.Xor(ret, v)
 	}
-	return pad_bitstring(len_hash, encode_int(ret))
+	return ret
 }
 
-func encode_int(l int) BitString {
+func encode_int(_l int64) BitString {
+	l := big.NewInt(_l)
+
 	output := BitString{}
-	mask := (1 << bit_per_sym) - 1
-	for l != 0 {
-		last_bit := l & mask
-		l = l >> bit_per_sym
+	mask := big.NewInt(1)
+	mask.Lsh(mask, uint(bit_per_sym))
+	mask.Sub(mask, big.NewInt(1))
+	for !(l.IsInt64() && l.Int64() == 0) {
+		last_bit := big.NewInt(0)
+		last_bit.And(l, mask)
+		l.Rsh(l, uint(bit_per_sym))
 		output = append(output, last_bit)
 	}
 	slices.Reverse(output)
@@ -73,7 +82,8 @@ const cutoff_variance_preamble = 0.07
 
 // const self_correction_after_sym = 8 // do a self correction every 8 symbols
 
-type BitString = []int
+type BitString = []*big.Int
+
 
 // is_idle := true
 var is_idle bool
@@ -112,6 +122,14 @@ func arg_max(s []float64) int {
 // }
 
 func main() {
+	f := mod_freq_range_width / mod_freq_step
+	mod_state_num = big.NewInt(int64(f))
+	sym_size = big.NewInt(1)
+	for i := 0; i < mod_freq_range_num; i++ {
+		sym_size.Mul(sym_size, mod_state_num)
+	}
+	bit_per_sym = sym_size.BitLen() - 1
+
 	is_idle = true
 	ctx, err := malgo.InitContext(nil, malgo.ContextConfig{}, func(message string) {
 		// fmt.Printf("LOG <%v>\n", message)
@@ -130,7 +148,7 @@ func main() {
 
 	data_width := int(malgo.SampleSizeInBytes(deviceConfig.Capture.Format))
 	samples_required := int(math.Ceil(preamble_duration.Seconds() * sampleRate))
-	samples_required = max(samples_required, int(math.Ceil(2 * modulate_duration.Seconds() * sampleRate)))
+	samples_required = max(samples_required, int(math.Ceil(2 * mod_duration.Seconds() * sampleRate)))
 	rb := newRb(samples_required * 10)
 
 	chirp_rate := (preamble_final_freq - preamble_start_freq) / preamble_duration.Seconds()
@@ -197,27 +215,28 @@ func main() {
 			if frameCountAll <= 0 { return }
 			// we're in working mode
 			bits_read := len(received)
-			modulated_width := int(math.Ceil(modulate_duration.Seconds() * sampleRate))
+			modulated_width := int(math.Ceil(mod_duration.Seconds() * sampleRate))
 			bits_expected := frameCountAll / modulated_width
 			left_over := frameCountAll % modulated_width
-			gap_width := int(math.Ceil(modulate_duration_gap.Seconds() * sampleRate))
+			gap_width := int(math.Ceil(mod_duration_gap.Seconds() * sampleRate))
 			for ; bits_read < bits_expected; bits_read++ {
 				// leave slice_width empty so we're more likely get a good result from fourier transform
 				to_analyze := rb.CopyStrideRight(gap_width + left_over + (bits_expected - bits_read - 1) * modulated_width, modulated_width - 2 * gap_width)
 				L := len(to_analyze)
 				energy_cur := sig_to_energy_at_freq(to_analyze)
 
-				sym := 0
-				for k := 0; k < freq_ranges; k++ {
-					start_freq := modulate_low_freq + k * freq_range_length 
-					end_freq := modulate_low_freq + (k + 1) * freq_range_length 
+				sym := big.NewInt(0)
+				for k := 0; k < mod_freq_range_num; k++ {
+					start_freq := mod_low_freq + float64(k) * mod_freq_range_width
+					end_freq := start_freq + mod_freq_range_width
 					// Fs * i_start / L = start_freq 
-					i_start := int(start_freq * L / sampleRate)
-					i_end := int(end_freq * L / sampleRate)
+					i_start := int(start_freq * float64(L) / sampleRate)
+					i_end := int(end_freq * float64(L) / sampleRate)
 					max_energy_freq := sampleRate * float64(arg_max(energy_cur[i_start:i_end])) / float64(L)
 					// max_energy_freq = start_freq + part * 20
-					part := int(max_energy_freq - float64(start_freq)) / freq_step
-					sym = sym << 3 | part
+					part := int(max_energy_freq - float64(start_freq)) / mod_freq_step
+					sym.Lsh(sym, uint(bit_per_sym))
+					sym.Or(sym, big.NewInt(int64(part)))
 				}
 
 				// // energy[i] correponds to frequency Fs * i/L
@@ -232,12 +251,12 @@ func main() {
 				received = append(received, sym)
 				fmt.Printf("%d ", sym)
 				// first bit of length must be 0 if we never sent data over length 10000
-				if len(received) == do_offset + 1 && (sym != 0) {
+				if len(received) == do_offset + 1 && !(sym.IsInt64() && sym.Int64() == 0) {
 					// magic
 					do_offset += 1
 					fmt.Printf("[discard] ")
 				} else if len(received) - do_offset <= len_length {
-					packet_length = (packet_length << bit_per_sym) | received[len(received)-1]
+					packet_length = (packet_length << bit_per_sym) | int(received[len(received)-1].Int64())
 					if len(received) - do_offset == len_length && packet_length == 0 {
 						do_offset += 1
 						fmt.Printf("[ignore leading 0]")
@@ -247,8 +266,8 @@ func main() {
 				} else if len(received) - do_offset == len_length + packet_length + 1 {
 					// packet_rest = received[len_length + len_hash:]
 					modulo := received[do_offset+len_length]
-					packet_hash := received[do_offset+len_length+1:do_offset+len_length+len_hash+1]
-					packet_data := received[do_offset+len_length+len_hash+1:]
+					packet_hash := received[do_offset+len_length+1:do_offset+len_length+1+1]
+					packet_data := received[do_offset+len_length+1+1:]
 					fmt.Printf("\nGot packet of length %d with modulo %d, hash %v, content %v", packet_length, modulo, packet_hash, packet_data)
 					os.Exit(0)
 				}
