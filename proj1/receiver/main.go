@@ -2,17 +2,19 @@
 package main
 
 import (
-	"os"
-	"slices"
+	"bufio"
 	"encoding/binary"
 	"fmt"
 	"math"
-	"math/cmplx"
-	"time"
 	"math/big"
+	"math/cmplx"
+	"slices"
+	"time"
+
+	"os"
 
 	"github.com/gen2brain/malgo"
-        "github.com/mjibson/go-dsp/fft"
+	"github.com/mjibson/go-dsp/fft"
 )
 
 
@@ -20,9 +22,10 @@ const mod_duration_gap = 20 * time.Millisecond
 const mod_duration = 500 * time.Millisecond
 const mod_low_freq = 1000.0
 const mod_high_freq = 17000.0
-const mod_width = mod_freq_step - mod_low_freq
+const mod_width = mod_high_freq - mod_low_freq
 const mod_freq_step = 50.0
-const mod_freq_range_num = 80
+// const mod_freq_range_num = 80
+const mod_freq_range_num = 2
 const mod_freq_range_width = mod_width / mod_freq_range_num
 var mod_state_num *big.Int
 var sym_size *big.Int
@@ -232,9 +235,11 @@ func main() {
 					// Fs * i_start / L = start_freq 
 					i_start := int(start_freq * float64(L) / sampleRate)
 					i_end := int(end_freq * float64(L) / sampleRate)
-					max_energy_freq := sampleRate * float64(arg_max(energy_cur[i_start:i_end])) / float64(L)
+					// fmt.Printf("[%f %f] -> [%d %d] on [0 %d]", start_freq, end_freq, i_start, i_end, len(energy_cur))
+					max_energy_freq := sampleRate * float64(arg_max(energy_cur[i_start:i_end]) + i_start) / float64(L)
 					// max_energy_freq = start_freq + part * 20
-					part := int(max_energy_freq - float64(start_freq)) / mod_freq_step
+					part := int(max_energy_freq - float64(start_freq)) / mod_freq_range_width
+					fmt.Printf("In [%f, %f] we have max frequency of %f, interpreted as %d\n", start_freq, end_freq, max_energy_freq, part)
 					sym.Lsh(sym, uint(bit_per_sym))
 					sym.Or(sym, big.NewInt(int64(part)))
 				}
@@ -265,51 +270,8 @@ func main() {
 				// 	packet_hash = (packet_hash << bit_per_sym) | received[len(received)-1]
 				} else if len(received) - do_offset == len_length + packet_length + 1 {
 					// packet_rest = received[len_length + len_hash:]
-					modulo := received[do_offset+len_length]
-					packet_hash := received[do_offset+len_length+1:do_offset+len_length+1+1]
-					packet_data := received[do_offset+len_length+1+1:]
-					fmt.Printf("\nGot packet of length %d with modulo %d, hash %v, content %v", packet_length, modulo, packet_hash, packet_data)
-					os.Exit(0)
+					finale(packet_length, do_offset, received)
 				}
-
-				// if false {
-				// // if len(received) >= 2 {
-				//
-				// 	cur_sym := received[len(received) - 1]
-				// 	last_sym := received[len(received) - 2]
-				// 	if cur_sym != last_sym {
-				// 		shift_width := int(math.Ceil(shift_duration.Seconds() * sampleRate))
-				// 		// we got two different adjacent signal hence we can do correction here.
-				// 		// note we count from right to left
-				// 		current_end := (left_over + (bits_expected - bits_read - 1) * modulated_width)
-				// 		last_end := current_end + modulated_width
-				// 		energy_last := sig_to_energy_at_freq(rb.CopyStrideRight(last_end, modulated_width))
-				//
-				//
-				// 		last_shift_right_end := last_end - shift_width
-				// 		energy_last_shift_right := sig_to_energy_at_freq(rb.CopyStrideRight(last_shift_right_end, modulated_width))
-				// 		current_shift_left_end := current_end + shift_width
-				// 		energy_current_shift_left := sig_to_energy_at_freq(rb.CopyStrideRight(current_shift_left_end, modulated_width))
-				//
-				// 		energy_cur_at_freq := get_energy_by_sym(energy_cur, cur_sym, sampleRate, L)
-				// 		energy_cur_shift_left_at_freq := get_energy_by_sym(energy_current_shift_left, cur_sym, sampleRate, L)
-				// 		energy_last_at_freq := get_energy_by_sym(energy_last, last_sym, sampleRate, L)
-				// 		energy_last_shift_right_at_freq := get_energy_by_sym(energy_last_shift_right, last_sym, sampleRate, L)
-				// 		// fmt.Printf("(%f, %f) ", (energy_cur_at_freq - energy_cur_shift_left_at_freq)/ energy_cur_at_freq, (energy_last_at_freq - energy_last_shift_right_at_freq) / energy_last_at_freq)
-				// 		if energy_cur_shift_left_at_freq > energy_cur_at_freq && energy_last_shift_right_at_freq < energy_last_at_freq {
-				// 			// we should shift left
-				// 			// simulated by adding some frames at the very beginning
-				// 			frameCountAll += shift_width
-				// 			fmt.Printf("← ")
-				// 		} else if energy_cur_shift_left_at_freq < energy_cur_at_freq && energy_last_shift_right_at_freq > energy_last_at_freq{
-				// 			// we should shift right
-				// 			// simulated by removing some frames at the very beginning
-				// 			frameCountAll -= shift_width
-				// 			fmt.Printf("→ ")
-				// 		}
-				// 	}
-				//
-				// } 
 			}
 		}
 	}
@@ -329,6 +291,37 @@ func main() {
 	fmt.Scanln()                                   
 }
 
+func finale(packet_length int, do_offset int, received BitString){
+	modulo := int(received[do_offset+len_length].Int64())
+	packet_hash := received[do_offset+len_length+1:do_offset+len_length+1+1]
+	packet_data := received[do_offset+len_length+1+1:]
+	fmt.Printf("\nGot packet of length %d with modulo %d, hash %v, content %v", packet_length, modulo, packet_hash, packet_data)
+	fmt.Printf("Writing packet to disk named received.txt")
+	file, err := os.Create("received.txt")
+	chk(err)
+	defer file.Close()
+	writer := bufio.NewWriter(file)
+	defer writer.Flush()
+	length_bin := bit_per_sym * len(packet_data) - (bit_per_sym - modulo)
+	output := make([]byte, length_bin)
+	for id, v := range(packet_data) {
+		for i := 0; i < bit_per_sym; i++ {
+			cur_offset := id * bit_per_sym + (bit_per_sym - 1 - i)
+			if cur_offset >= len(output) {
+				continue
+			}
+			output[cur_offset] = byte(v.Bit(i))
+		}
+	}
+	for _, bit := range(output) {
+		if bit == 0 {
+			writer.WriteString("0")
+		} else {
+			writer.WriteString("1")
+		}
+	}
+	os.Exit(0)
+}
 
 func chk(err error) {
 	if err != nil {
@@ -359,8 +352,6 @@ func (rb *RingBuffer) Write(f float64) {
 	if rb.tail == rb.head {
 		rb.head = (rb.head + 1) % len(rb.inner)
 	}
-	// fmt.Printf("we have (head, tail) = (%d, %d) data in rb of length %d\n", rb.head, rb.tail, len(rb.inner))
-	// fmt.Printf("(%d, %d, %d) ", rb.head, rb.tail, len(rb.inner))
 }
 
 func (rb * RingBuffer) CopyStrideRight(rbegin int , count int) []float64 {

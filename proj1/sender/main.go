@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ebitengine/oto/v3"
-
 	"fmt"
 	"math"
 	"math/big"
@@ -21,9 +20,9 @@ const mod_duration = 500 * time.Millisecond
 const mod_low_freq = 1000.0
 const mod_high_freq = 17000.0
 const mod_width = mod_high_freq - mod_low_freq
-const mod_freq_step = 50.0
-const mod_freq_range_num = 80
-// const mod_freq_range_num = 2
+const mod_freq_step = 2000.0
+// const mod_freq_range_num = 80
+const mod_freq_range_num = 2
 const mod_freq_range_width = mod_width / mod_freq_range_num
 var freq_diff_lower_bound float64
 
@@ -78,7 +77,7 @@ func main() {
 
 	var file *os.File
 
-	file, err = os.Create("/tmp/out")
+	file, err = os.Create("log")
 	chk(err)
 	defer file.Close()
 
@@ -86,7 +85,7 @@ func main() {
 	defer w.Flush()
 
 	// msg := random_bit_string_of_length(10000)
-	msg := read_bitstring("0010001101011011110101100110")
+	msg := read_bitstring("001000110101101111010111000010101010110101010101101010100101101001111111111111010110101010010101010110101011010101010010000101010100101110100101011010101001000101001111111111111110101010101100110")
 	modulate(c, msg, opts.SampleRate)
 }
 
@@ -112,10 +111,10 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 		}
 		sym := big.NewInt(0)
 		sym.Set(c.data[symbol_sent])
-		// if symbol_frame_id == 0 {
-		// 	fmt.Printf("[%d:", sym)
-		// 	fmt.Printf("[%v]\n", c.data)
-		// }
+		if symbol_frame_id == 0 {
+			fmt.Printf("%d", sym)
+			// w.WriteString(fmt.Sprintf("%d: ", sym))
+		}
 		phase := 2 * math.Pi * float64(symbol_frame_id) / float64(c.sampleRate)
 		cur_f := 0.0
 		index_at_range_k_b := big.NewInt(0)
@@ -123,17 +122,18 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 			sym.DivMod(sym, mod_state_num, index_at_range_k_b)
 			index_at_range_k, _ := index_at_range_k_b.Float64()
 			freq_at_range_k := mod_low_freq + mod_freq_range_width * float64(k)+ mod_freq_step * index_at_range_k 
-			// if symbol_frame_id == 0 {
-				// fmt.Printf("%.2f+%.2f*%.2f+%.2f*%.2f=%.2f ", mod_low_freq, mod_freq_range_width, float64(k), mod_freq_step, index_at_range_k, freq_at_range_k)
-			// fmt.Printf("%d:%.2f ", sym, freq_at_range_k)
-			// }
 			cur_f += math.Sin(freq_at_range_k * phase)
+			// fmt.Printf("hello")
+			// if symbol_frame_id == 0 {
+			// 	w.WriteString(fmt.Sprintf("%f ", cur_f))
+			// 	// fmt.Printf("%f ", freq_at_range_k)
+			// }
 		}
 		// if symbol_frame_id == 0 {
-		// 	fmt.Printf("] ")
+		// 		w.WriteString("\n")
+		// 	// fmt.Printf("] ")
 		// }
 		bs := math.Float32bits(float32(cur_f))
-		// w.WriteString(fmt.Sprintf("%f, ", cur_f))
 
 		buf[buf_offset] = byte(bs)
 		buf[buf_offset+1] = byte(bs>>8)
@@ -190,7 +190,6 @@ func encode_int(_l int64) BitString {
 	return output
 }
 
-const len_hash = 4
 func calculate_hash(msg BitString) *big.Int {
 	ret := big.NewInt(0)
 	for i, v := range(msg) {
@@ -285,9 +284,10 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	fmt.Printf("Rounding down the symbol set from %d to contain 2^%d symbols for simplicity\n", sym_size, bit_per_sym)
 	// os.Exit(0)
 
-	fmt.Printf("Trying to modulate %v\n", message)
+	fmt.Printf("Original message: %v\n", message)
 	modulo := len(message) % bit_per_sym
 	message = convert_base(message, bit_per_sym)
+	fmt.Printf("Rebased message: %v\n", message)
 
 	fmt.Println("Sending preamble")
 	preamble_sig := c.NewPlayer(&PreambleSig{
@@ -324,7 +324,7 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 
 	data_sig := c.NewPlayer(&DataSig{data: output, sampleRate: sampleRate})
 	data_sig.Play()
-	time.Sleep(time.Duration(math.Ceil(float64(len(output))) + 0.5) * mod_duration * 100)
+	time.Sleep(time.Duration(math.Ceil(float64(len(output))) + 0.5) * mod_duration)
 
 	fmt.Println("\nMessage successfully modulated and played")
 } 
