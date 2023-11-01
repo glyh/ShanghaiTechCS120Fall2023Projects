@@ -74,7 +74,7 @@ func main() {
 	<-ready
 
 	// msg := random_bit_string_of_length(10000)
-	msg := read_bitstring("0010")
+	msg := read_bitstring("0010001101011011110101100110")
 	modulate(c, msg, opts.SampleRate)
 }
 
@@ -100,24 +100,23 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 		}
 		sym := c.data[symbol_sent]
 		if symbol_frame_id == 0 {
-			fmt.Printf("%d ", sym)
+			fmt.Printf("[%d|", sym)
 		}
-		phase := math.Mod(2 * math.Pi * float64(symbol_frame_id) / float64(c.sampleRate), 2 * math.Pi)
+		phase := 2 * math.Pi * float64(symbol_frame_id) / float64(c.sampleRate)
 		cur_f := 0.0
 		index_at_range_k_b := big.NewInt(0)
 		for k := 0; k < mod_freq_range_num; k++ {
-			// index_at_range_k := (sym >> (3 * k)) & ((1 << 3) - 1)
-			// index_at_range_k := sym % mod_state_num
 			sym.DivMod(sym, mod_state_num_b, index_at_range_k_b)
 			index_at_range_k, _ := index_at_range_k_b.Float64()
-			freq_at_range_k := index_at_range_k * mod_freq_range_width + mod_low_freq + mod_freq_step * float64(k)
+			freq_at_range_k := mod_low_freq + mod_freq_range_width * float64(k)+ mod_freq_step * index_at_range_k 
 			if symbol_frame_id == 0 {
-				fmt.Printf("(%f) ", freq_at_range_k)
+				fmt.Printf("%.2f+%.2f*%.2f+%.2f*%.2f=%.2f ", mod_low_freq, mod_freq_range_width, float64(k), mod_freq_step, index_at_range_k, freq_at_range_k)
 			}
 			cur_f += math.Sin(freq_at_range_k * phase)
-			// sym /= mod_state_num
 		}
-		// c.sym_mod[sym][symbol_frame_id]
+		if symbol_frame_id == 0 {
+			fmt.Printf("] ")
+		}
 		bs := math.Float32bits(float32(cur_f))
 
 		buf[buf_offset] = byte(bs)
@@ -316,9 +315,9 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 
 	data_sig := c.NewPlayer(&DataSig{data: output, sampleRate: sampleRate})
 	data_sig.Play()
-	time.Sleep(time.Duration(math.Ceil(float64(len(output))) + 1.0) * mod_duration)
+	time.Sleep(time.Duration(math.Ceil(float64(len(output))) + 0.5) * mod_duration)
 
-	fmt.Println("Message successfully modulated and played")
+	fmt.Println("\nMessage successfully modulated and played")
 } 
 
 func chk(err error) {
