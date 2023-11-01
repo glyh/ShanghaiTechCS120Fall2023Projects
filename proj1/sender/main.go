@@ -5,8 +5,7 @@
 package main
 
 import (
-	"bufio"
-	"slices"
+	"bufio" "slices" 
 	"time"
 
 	"github.com/ebitengine/oto/v3"
@@ -18,9 +17,9 @@ import (
 )
 const mod_duration = 500 * time.Millisecond
 const mod_low_freq = 1000.0
-const mod_high_freq = 17000.0
+const mod_high_freq = 8000.0
 const mod_width = mod_high_freq - mod_low_freq
-const mod_freq_step = 2000.0
+const mod_freq_step = 200.0
 // const mod_freq_range_num = 80
 const mod_freq_range_num = 2
 const mod_freq_range_width = mod_width / mod_freq_range_num
@@ -97,6 +96,7 @@ type DataSig struct {
 	sampleRate int
 }
 
+var outed BitString
 func (c *DataSig) Read(buf []byte) (int, error) {
 	// number of frame per single symbol
 	frame_per_sym := int(math.Ceil(float64(c.sampleRate) * mod_duration.Seconds()))
@@ -112,22 +112,27 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 		sym := big.NewInt(0)
 		sym.Set(c.data[symbol_sent])
 		if symbol_frame_id == 0 {
-			fmt.Printf("%d", sym)
-			// w.WriteString(fmt.Sprintf("%d: ", sym))
+			outed = append(outed, c.data[symbol_sent])
 		}
+		// 	fmt.Printf("%d", sym)
+		// 	// w.WriteString(fmt.Sprintf("%d: ", sym))
+		// }
 		phase := 2 * math.Pi * float64(symbol_frame_id) / float64(c.sampleRate)
 		cur_f := 0.0
 		index_at_range_k_b := big.NewInt(0)
+		cur_range_start_freq := mod_low_freq
 		for k := 0; k < mod_freq_range_num; k++ {
 			sym.DivMod(sym, mod_state_num, index_at_range_k_b)
 			index_at_range_k, _ := index_at_range_k_b.Float64()
-			freq_at_range_k := mod_low_freq + mod_freq_range_width * float64(k)+ mod_freq_step * index_at_range_k 
+			// freq_at_range_k := mod_low_freq + mod_freq_range_width * float64(k)+ mod_freq_step * index_at_range_k 
+			freq_at_range_k := cur_range_start_freq + mod_freq_step * index_at_range_k
 			cur_f += math.Sin(freq_at_range_k * phase)
 			// fmt.Printf("hello")
 			// if symbol_frame_id == 0 {
 			// 	w.WriteString(fmt.Sprintf("%f ", cur_f))
 			// 	// fmt.Printf("%f ", freq_at_range_k)
 			// }
+			cur_range_start_freq += mod_freq_range_width
 		}
 		// if symbol_frame_id == 0 {
 		// 		w.WriteString("\n")
@@ -327,6 +332,7 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	time.Sleep(time.Duration(math.Ceil(float64(len(output))) + 0.5) * mod_duration)
 
 	fmt.Println("\nMessage successfully modulated and played")
+	fmt.Printf("%v\n", outed)
 } 
 
 func chk(err error) {
