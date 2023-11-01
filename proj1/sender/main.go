@@ -110,7 +110,7 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 			// index_at_range_k := sym % mod_state_num
 			sym.DivMod(sym, mod_state_num_b, index_at_range_k_b)
 			index_at_range_k, _ := index_at_range_k_b.Float64()
-			freq_at_range_k := index_at_range_k * mod_freq_step + mod_low_freq + mod_freq_step * float64(k)
+			freq_at_range_k := index_at_range_k * mod_freq_range_width + mod_low_freq + mod_freq_step * float64(k)
 			if symbol_frame_id == 0 {
 				fmt.Printf("(%f) ", freq_at_range_k)
 			}
