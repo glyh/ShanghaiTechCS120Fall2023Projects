@@ -5,7 +5,8 @@
 package main
 
 import (
-	"bufio" "slices" 
+	"bufio"
+	"slices" 
 	"time"
 
 	"github.com/ebitengine/oto/v3"
