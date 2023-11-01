@@ -46,13 +46,16 @@ const len_length = 2
 type BitString = []*big.Int
 
 func read_bitstring(s string) BitString {
-	out := make(BitString, len(s))
-	for i, v := range(s) { 
+	out := BitString{}
+	for _, v := range(s) { 
 		bit := int64(0)
 		if v == '1' {
 			bit = 1
-		} 
-		out[i] = big.NewInt(bit)
+			out = append(out, big.NewInt(bit))
+		} else if v == '0' {
+			bit = 0
+			out = append(out, big.NewInt(bit))
+		}
 	}
 	return out
 }
