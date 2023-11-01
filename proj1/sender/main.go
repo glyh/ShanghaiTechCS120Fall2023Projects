@@ -61,7 +61,7 @@ func random_bit_string_of_length(l int) BitString {
 	return out
 }
 
-var w *bufio.Writer
+// var w *bufio.Writer
 
 func main() {
 	opts := &oto.NewContextOptions{}
@@ -75,14 +75,14 @@ func main() {
 	chk(err)
 	<-ready
 
-	var file *os.File
+	// var file *os.File
 
 	// file, err = os.Create("log")
-	chk(err)
-	defer file.Close()
+	// chk(err)
+	// defer file.Close()
 
-	w = bufio.NewWriter(file)
-	defer w.Flush()
+	// w = bufio.NewWriter(file)
+	// defer w.Flush()
 
 	// msg := random_bit_string_of_length(10000)
 	msg := read_bitstring("001000110101101111010111000010101010110101010101101010100101101001111111111111010110101010010101010110101011010101010010000101010100101110100101011010101001000101001111111111111110101010101100110")
