@@ -22,7 +22,7 @@ const mod_high_freq = 8000.0
 const mod_width = mod_high_freq - mod_low_freq
 const mod_freq_step = 200.0
 // const mod_freq_range_num = 80
-const mod_freq_range_num = 2
+const mod_freq_range_num = 1
 const mod_freq_range_width = mod_width / mod_freq_range_num
 var freq_diff_lower_bound float64
 
