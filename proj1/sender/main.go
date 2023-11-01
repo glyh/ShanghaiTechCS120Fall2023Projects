@@ -15,6 +15,9 @@ import (
 	"math/big"
 	"math/rand"
 	"os"
+
+	"io/ioutil"
+    "log"
 )
 const mod_duration = 800 * time.Millisecond
 const mod_low_freq = 1000.0
@@ -87,7 +90,18 @@ func main() {
 
 	// msg := random_bit_string_of_length(10000)
 	// msg := read_bitstring("001000110101101111010111000010101010110101010101101010100101101001111111111111010110101010010101010110101011010101010010000101010100101110100101011010101001000101001111111111111110101010101100110")
-	msg := read_bitstring("001000110101101111010111000010")
+	// msg := read_bitstring("001000110101101111010111000010")
+	filePath := "INPUT.txt"
+	// Read the file's contents
+    content, err := ioutil.ReadFile(filePath)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Convert the content to a string and print it
+    msg1 := string(content)
+	msg := read_bitstring(msg1)
+    // fmt.Println(fileContent)
 	modulate(c, msg, opts.SampleRate)
 }
 
