@@ -111,7 +111,8 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 		if symbol_sent >= len(c.data) {
 			return buf_offset, nil
 		}
-		sym := c.data[symbol_sent]
+		sym := big.NewInt(0)
+		sym.Set(c.data[symbol_sent])
 		if symbol_frame_id == 0 {
 			fmt.Printf("[%d:", sym)
 		}
@@ -289,7 +290,7 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	}
 	bit_per_sym_b := sym_size_b.BitLen() - 1
 	fmt.Printf("Rounding down the symbol set from %d(%d) to contain 2^%d symbols for simplicity\n", sym_size, sym_size_b, bit_per_sym_b)
-	os.Exit(0)
+	// os.Exit(0)
 
 	fmt.Printf("Trying to modulate %v\n", message)
 	modulo := len(message) % bit_per_sym
