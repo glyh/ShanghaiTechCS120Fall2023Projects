@@ -77,7 +77,7 @@ func main() {
 
 	var file *os.File
 
-	file, err = os.Create("log")
+	// file, err = os.Create("log")
 	chk(err)
 	defer file.Close()
 
@@ -103,14 +103,15 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 	frame_per_sym := int(math.Ceil(float64(c.sampleRate) * mod_duration.Seconds()))
 
 	// mod_state_num_b := big.NewInt(int64(mod_state_num))
-
+	sym := big.NewInt(0)
+	index_at_range_k_b := big.NewInt(0)
 	for buf_offset := 0; buf_offset < len(buf); buf_offset += 4 {
 		symbol_sent := c.offset / frame_per_sym
 		symbol_frame_id := c.offset % frame_per_sym
 		if symbol_sent >= len(c.data) {
 			return buf_offset, nil
 		}
-		sym := big.NewInt(0)
+		
 		sym.Set(c.data[symbol_sent])
 		if symbol_frame_id == 0 {
 			outed = append(outed, c.data[symbol_sent])
@@ -120,7 +121,7 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 		// }
 		phase := 2 * math.Pi * float64(symbol_frame_id) / float64(c.sampleRate)
 		cur_f := 0.0
-		index_at_range_k_b := big.NewInt(0)
+		
 		cur_range_start_freq := mod_low_freq
 		for k := 0; k < mod_freq_range_num; k++ {
 			sym.DivMod(sym, mod_state_num, index_at_range_k_b)
