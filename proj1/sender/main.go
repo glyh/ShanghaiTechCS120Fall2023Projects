@@ -73,7 +73,8 @@ func main() {
 	chk(err)
 	<-ready
 
-	msg := random_bit_string_of_length(10000)
+	// msg := random_bit_string_of_length(10000)
+	msg := read_bitstring("0010")
 	modulate(c, msg, opts.SampleRate)
 }
 
@@ -212,23 +213,36 @@ func pad_bitstring(length int, msg BitString) BitString {
 		panic("input bitstring too long")
 	}
 	zeros := make(BitString, length - len(msg))
-	for i, _ := range(zeros) {
+	for i := 0; i < len(zeros); i++ {
 		zeros[i] = big.NewInt(0)
 	}
 	return append(zeros, msg...)
 }
 
+func rpad_bitstring(length int, msg BitString) BitString {
+	if len(msg) > length {
+		panic("input bitstring too long")
+	}
+	zeros := make(BitString, length - len(msg))
+	for i := 0; i < len(zeros); i++ {
+		zeros[i] = big.NewInt(0)
+	}
+	return append(msg, zeros...)
+}
+
 func convert_base(message BitString, bit_per_sym int) BitString {
 	out := BitString{}
 	for i := uint64(0); i < uint64(len(message)); i += uint64(bit_per_sym) {
-		fmt.Printf("[%d]:[%d!]", i, bit_per_sym)
+		// fmt.Printf("[%d]:[%d!]", i, bit_per_sym)
 		cur := big.NewInt(0)
 		for j := 0; j < bit_per_sym; j++ {
 			cur.Lsh(cur, 1)
 			if i + uint64(j) < uint64(len(message)) {
 				cur.Or(cur, message[int(i)+j])
 			}
+			// fmt.Printf("%v..", cur)
 		}
+		// fmt.Printf("%v converts to %d\n", rpad_bitstring(bit_per_sym, message[i:min(int(i)+bit_per_sym, len(message))]), cur)
 		out = append(out, cur)
 	}
 	return out
@@ -263,7 +277,7 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	fmt.Printf("Rounding down the symbol set from %d(%d) to contain 2^%d symbols for simplicity\n", sym_size, sym_size_b, bit_per_sym_b)
 	// os.Exit(0)
 
-	// fmt.Printf("Trying to modulate %v\n", message)
+	fmt.Printf("Trying to modulate %v\n", message)
 	modulo := len(message) % bit_per_sym
 	message = convert_base(message, bit_per_sym)
 
