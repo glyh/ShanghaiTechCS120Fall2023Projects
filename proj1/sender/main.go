@@ -16,13 +16,13 @@ import (
 	"math/rand"
 	"os"
 )
-const mod_duration = 500 * time.Millisecond
+const mod_duration = 800 * time.Millisecond
 const mod_low_freq = 1000.0
 const mod_high_freq = 17000.0
 const mod_width = mod_high_freq - mod_low_freq
-const mod_freq_step = 100.0
+const mod_freq_step = 200.0
 // const mod_freq_range_num = 80
-const mod_freq_range_num = 4
+const mod_freq_range_num = 10
 const mod_freq_range_width = mod_width / mod_freq_range_num
 var freq_diff_lower_bound float64
 
@@ -33,6 +33,7 @@ var bit_per_sym int
 
 // the finest difference we can tell with sample rate fs is fs/L where L is the length of the signal(L = t * fs), thus to differentiate by 20hz, 1/t = 20hz, t = 1/20s = 500ms
 
+const sleep_duration = 500 * time.Millisecond
 const preamble_duration = 800 * time.Millisecond
 const preamble_start_freq = 1000.0
 const preamble_final_freq = 5000.0
@@ -85,7 +86,8 @@ func main() {
 	// defer w.Flush()
 
 	// msg := random_bit_string_of_length(10000)
-	msg := read_bitstring("001000110101101111010111000010101010110101010101101010100101101001111111111111010110101010010101010110101011010101010010000101010100101110100101011010101001000101001111111111111110101010101100110")
+	// msg := read_bitstring("001000110101101111010111000010101010110101010101101010100101101001111111111111010110101010010101010110101011010101010010000101010100101110100101011010101001000101001111111111111110101010101100110")
+	msg := read_bitstring("001000110101101111010111000010")
 	modulate(c, msg, opts.SampleRate)
 }
 
@@ -115,7 +117,7 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 		sym.Set(c.data[symbol_sent])
 		if symbol_frame_id == 0 {
 		// 	outed = append(outed, c.data[symbol_sent])
-			fmt.Printf("[%d::", sym)
+			fmt.Printf("[%d|", sym)
 			// w.WriteString(fmt.Sprintf("%d: ", sym))
 		}
 		phase := 2 * math.Pi * float64(symbol_frame_id) / float64(c.sampleRate)
@@ -131,7 +133,7 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 			// fmt.Printf("hello")
 			if symbol_frame_id == 0 {
 				// w.WriteString(fmt.Sprintf("%f ", cur_f))
-				fmt.Printf("%.2f ", freq_at_range_k)
+				fmt.Printf("%.0f:%.2f ", index_at_range_k, freq_at_range_k)
 			}
 			cur_range_start_freq += mod_freq_range_width
 		}
@@ -305,6 +307,7 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 		sampleRate: sampleRate })
 	preamble_sig.Play()
 	time.Sleep(preamble_duration)
+	time.Sleep(sleep_duration)
 
 	// modulated_syms := modulate_syms(float64(sampleRate)) 
 

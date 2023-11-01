@@ -18,15 +18,17 @@ import (
 )
 
 
-const mod_duration_gap = 20 * time.Millisecond
 const mod_duration = 800 * time.Millisecond
 const mod_low_freq = 1000.0
 const mod_high_freq = 17000.0
 const mod_width = mod_high_freq - mod_low_freq
-const mod_freq_step = 100.0
-// const mod_freq_range_num = 80
-const mod_freq_range_num = 4
+const mod_freq_step = 140.0
+const mod_freq_range_num = 10
 const mod_freq_range_width = mod_width / mod_freq_range_num
+const gap_freq = mod_freq_step / 2
+
+const mod_duration_gap = 20 * time.Millisecond
+// const mod_freq_range_num = 80
 var mod_state_num *big.Int
 var sym_size *big.Int
 
@@ -71,6 +73,8 @@ func encode_int(_l int64) BitString {
 }
 
 const sampleRate = 44100.0
+
+const sleep_duration = 500 * time.Millisecond
 const preamble_duration = 800 * time.Millisecond
 // in general we want higher preamble freqency to distinguish from the noises
 const preamble_start_freq = 1000.0
@@ -215,36 +219,49 @@ func main() {
 			}
 			// we reset and start to count frames we have
 		} else {
-			if frameCountAll <= 0 { return }
+			sleep_frames := int(math.Ceil(sleep_duration.Seconds() * float64(sampleRate)))
+			if frameCountAll <= sleep_frames { return }
 			// we're in working mode
 			bits_read := len(received)
 			modulated_width := int(math.Ceil(mod_duration.Seconds() * sampleRate))
-			bits_expected := frameCountAll / modulated_width
-			left_over := frameCountAll % modulated_width
+			frameCountAllEffective := (frameCountAll - sleep_frames)
+			bits_expected := frameCountAllEffective / modulated_width
+			left_over := frameCountAllEffective % modulated_width
 			gap_width := int(math.Ceil(mod_duration_gap.Seconds() * sampleRate))
 			for ; bits_read < bits_expected; bits_read++ {
 				// leave slice_width empty so we're more likely get a good result from fourier transform
 				to_analyze := rb.CopyStrideRight(gap_width + left_over + (bits_expected - bits_read - 1) * modulated_width, modulated_width - 2 * gap_width)
 				L := len(to_analyze)
 				energy_cur := sig_to_energy_at_freq(to_analyze)
+				// energy[i] correponds to frequency Fs * i/L
 
 				sym := big.NewInt(0)
-				for k := 0; k < mod_freq_range_num; k++ {
-					start_freq := mod_low_freq + float64(k) * mod_freq_range_width
+				start_freq := mod_high_freq - mod_freq_range_width - gap_freq
+				// fmt.Printf("[")
+				for k := mod_freq_range_num - 1; k >= 0; k-- {
 					end_freq := start_freq + mod_freq_range_width
 					// Fs * i_start / L = start_freq 
 					i_start := int(start_freq * float64(L) / sampleRate)
 					i_end := int(end_freq * float64(L) / sampleRate)
-					// fmt.Printf("[%f %f] -> [%d %d] on [0 %d]", start_freq, end_freq, i_start, i_end, len(energy_cur))
+					// if k == 0 {
+					// 	for j, v := range(energy_cur[i_start:i_end]) {
+					// 		i := j + i_start
+					// 		fmt.Printf("(%.2f,%.2f) ", sampleRate * float64(i) / float64(L), v)
+					// 	}
+					// }
+					// fmt.Println("")
 					max_energy_freq := sampleRate * float64(arg_max(energy_cur[i_start:i_end]) + i_start) / float64(L)
 					// max_energy_freq = start_freq + part * 20
-					part := int(max_energy_freq - float64(start_freq)) / mod_freq_range_width
-					fmt.Printf("In [%f, %f] we have max frequency of %f, interpreted as %d\n", start_freq, end_freq, max_energy_freq, part)
-					sym.Lsh(sym, uint(bit_per_sym))
-					sym.Or(sym, big.NewInt(int64(part)))
-				}
+					part := int(math.Round((max_energy_freq - (start_freq + gap_freq)) / mod_freq_step))
+					// fmt.Printf("In [%f, %f] we have max frequency of %f, interpreted as %d\n", start_freq, end_freq, max_energy_freq, part)
+					// fmt.Printf("%.2f:%d ", max_energy_freq, part)
+					fmt.Printf("[%f %f] -> %f %d\n", start_freq + gap_freq, end_freq + gap_freq, max_energy_freq, part)
+					sym.Mul(sym, sym_size)
+					sym.Add(sym, big.NewInt(int64(part)))
+					start_freq -= mod_freq_range_width
+				}	
+				// fmt.Printf("]\n")
 
-				// // energy[i] correponds to frequency Fs * i/L
 				// // let Fs * i/L = zero_freq, then i = zero_freq / Fs * L
 				// max_energy_freq := sampleRate * float64(arg_max(energy_cur)) / float64(L)
 				// // say max_energy_freq = ratio * modulate_low_freq + (1 - ratio) * modulate_high_freq
