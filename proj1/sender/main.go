@@ -105,7 +105,7 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 		for k := 0; k < mod_freq_range_num; k++ {
 			// index_at_range_k := (sym >> (3 * k)) & ((1 << 3) - 1)
 			index_at_range_k := sym % mod_state_num
-			freq_at_range_k := float64(index_at_range_k * mod_freq_step + mod_low_freq + mod_freq_step * uint64(k))
+			freq_at_range_k := float64(index_at_range_k * mod_freq_range_width + mod_low_freq + mod_freq_step * uint64(k))
 			if symbol_frame_id == 0 {
 				fmt.Printf("(%f) ", freq_at_range_k)
 			}
