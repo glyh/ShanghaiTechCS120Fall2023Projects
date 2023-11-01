@@ -21,11 +21,12 @@ const mod_low_freq = 1000.0
 const mod_high_freq = 17000.0
 const mod_width = mod_high_freq - mod_low_freq
 const mod_freq_step = 50.0
-const mod_freq_range_num = 80
+// const mod_freq_range_num = 80
+const mod_freq_range_num = 2
 const mod_freq_range_width = mod_width / mod_freq_range_num
 var freq_diff_lower_bound float64
 
-var mod_state_num int
+var mod_state_num uint64
 var sym_size uint64
 
 var bit_per_sym int
@@ -84,32 +85,6 @@ type DataSig struct {
 	sampleRate int
 }
 
-// func modulate_syms(sampleRate float64) [][]float32 {
-// 	sampleNum := int(math.Ceil(modulate_duration.Seconds() * sampleRate))
-// 	ret := make([][]float32, sym_num)
-// 	for i := 0; i < sym_num; i++ {
-// 			phase := 0.0
-// 			phaseDelta := 2 * math.Pi / sampleRate
-//
-// 			ret[i] = make([]float32, sampleNum)
-// 			// ratio := float64(i) / float64(sym_num)
-// 			// freq := modulate_low_freq * ratio + modulate_high_freq * (1 - ratio) 
-// 			
-// 			for j := 0; j < sampleNum; j++ {
-// 				ret[i][j] = 0
-// 			// float32(math.Sin(freq * phase))
-// 				for k := 0; k < freq_ranges; k++ {
-// 					index_at_range_k := (i >> (3 * k)) & ((1 << 3) - 1)
-// 					freq_at_range_k := float64(index_at_range_k * freq_step + modulate_low_freq + 165 * k)
-// 					ret[i][j] += float32(math.Sin(freq_at_range_k * phase))
-// 				}
-// 				phase = math.Mod(phase + phaseDelta, 2 * math.Pi)
-// 			} 
-// 	}
-// 	return ret
-// }
-
-
 func (c *DataSig) Read(buf []byte) (int, error) {
 	// number of frame per single symbol
 	frame_per_sym := int(math.Ceil(float64(c.sampleRate) * mod_duration.Seconds()))
@@ -127,9 +102,11 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 		phase := 2 * math.Pi * float64(symbol_frame_id) / float64(c.sampleRate)
 		cur_f := 0.0
 		for k := 0; k < mod_freq_range_num; k++ {
-			index_at_range_k := (sym >> (3 * k)) & ((1 << 3) - 1)
-			freq_at_range_k := float64(index_at_range_k * mod_freq_step + mod_low_freq + 165 * uint64(k))
+			// index_at_range_k := (sym >> (3 * k)) & ((1 << 3) - 1)
+			index_at_range_k := sym % mod_state_num
+			freq_at_range_k := float64(index_at_range_k * mod_freq_step + mod_low_freq + mod_freq_step * uint64(k))
 			cur_f += math.Sin(freq_at_range_k * phase)
+			sym /= mod_state_num
 		}
 		// c.sym_mod[sym][symbol_frame_id]
 		bs := math.Float32bits(float32(cur_f))
@@ -224,12 +201,14 @@ func pad_bitstring(length int, msg BitString) BitString {
 
 func convert_base(message BitString, bit_per_sym int) BitString {
 	out := BitString{}
-	for i := 0; i < len(message); i += bit_per_sym {
+	for i := uint64(0); i < uint64(len(message)); i += uint64(bit_per_sym) {
+		fmt.Printf("[%d]:[%d!]", i, bit_per_sym)
 		cur := uint64(0)
 		for j := 0; j < bit_per_sym; j++ {
+			// fmt.Printf("(%d)", j)
 			cur = cur << 1
-			if i + j < len(message) {
-				cur |= message[i + j]
+			if i + uint64(j) < uint64(len(message)) {
+				cur |= message[int(i) + j]
 			}
 		}
 		out = append(out, cur)
@@ -240,11 +219,14 @@ func convert_base(message BitString, bit_per_sym int) BitString {
 func modulate(c *oto.Context, message BitString, sampleRate int) {
 
 	f := mod_freq_range_width / mod_freq_step
-	mod_state_num = int(f)
+	mod_state_num = uint64(f)
+	sym_size = 1
 	for i := 0; i < mod_freq_range_num; i++ {
-		sym_size = sym_size * uint64(mod_state_num)
+		sym_size = sym_size * mod_state_num
+		// fmt.Printf("%d.", sym_size)
 	}
-	bit_per_sym = int(math.Log2(float64(sym_size)))
+	// fmt.Println("")
+	bit_per_sym = int(math.Log2(float64(sym_size))) - 1
 	freq_diff_lower_bound = 1.0 / mod_duration.Seconds()
 	if freq_diff_lower_bound > mod_freq_step {
 		fmt.Printf("Frequency difference(%f) for modulation is too small compare to the lower limit %f\n", mod_freq_step, freq_diff_lower_bound)
@@ -259,11 +241,11 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	for i := 0; i < mod_freq_range_num; i++ {
 		sym_size_b.Mul(sym_size_b, mod_state_num_b)
 	}
-	bit_per_sym_b := sym_size_b.BitLen()
-	fmt.Printf("Rouding down the symbol set from %d to contain 2^%d symbols for simplicity\n", sym_size_b, bit_per_sym_b)
-	os.Exit(0)
+	bit_per_sym_b := sym_size_b.BitLen() - 1
+	fmt.Printf("Rounding down the symbol set from %d(%d) to contain 2^%d symbols for simplicity\n", sym_size, sym_size_b, bit_per_sym_b)
+	// os.Exit(0)
 
-	fmt.Printf("Trying to modulate %v\n", message)
+	// fmt.Printf("Trying to modulate %v\n", message)
 	modulo := len(message) % bit_per_sym
 	message = convert_base(message, bit_per_sym)
 
@@ -306,10 +288,6 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 
 	fmt.Println("Message successfully modulated and played")
 } 
-
-func demodulate(message []float64) BitString {
-	return BitString{}
-}
 
 func chk(err error) {
 	if err != nil {
