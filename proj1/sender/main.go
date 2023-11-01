@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bufio"
 	"slices"
 	"time"
 
@@ -22,7 +23,7 @@ const mod_high_freq = 17000.0
 const mod_width = mod_high_freq - mod_low_freq
 const mod_freq_step = 50.0
 // const mod_freq_range_num = 80
-const mod_freq_range_num = 2
+const mod_freq_range_num = 10
 const mod_freq_range_width = mod_width / mod_freq_range_num
 var freq_diff_lower_bound float64
 
@@ -61,6 +62,8 @@ func random_bit_string_of_length(l int) BitString {
 	return out
 }
 
+var w *bufio.Writer
+
 func main() {
 	opts := &oto.NewContextOptions{}
 
@@ -72,6 +75,15 @@ func main() {
 	c, ready, err := oto.NewContext(opts)
 	chk(err)
 	<-ready
+
+	var file *os.File
+
+	file, err = os.Create("/tmp/out")
+	chk(err)
+	defer file.Close()
+
+	w = bufio.NewWriter(file)
+	defer w.Flush()
 
 	// msg := random_bit_string_of_length(10000)
 	msg := read_bitstring("0010001101011011110101100110")
@@ -87,6 +99,7 @@ type DataSig struct {
 }
 
 func (c *DataSig) Read(buf []byte) (int, error) {
+	fmt.Printf("%v\n", c.data)
 	// number of frame per single symbol
 	frame_per_sym := int(math.Ceil(float64(c.sampleRate) * mod_duration.Seconds()))
 
@@ -100,7 +113,7 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 		}
 		sym := c.data[symbol_sent]
 		if symbol_frame_id == 0 {
-			fmt.Printf("[%d|", sym)
+			fmt.Printf("[%d:", sym)
 		}
 		phase := 2 * math.Pi * float64(symbol_frame_id) / float64(c.sampleRate)
 		cur_f := 0.0
@@ -109,15 +122,17 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 			sym.DivMod(sym, mod_state_num_b, index_at_range_k_b)
 			index_at_range_k, _ := index_at_range_k_b.Float64()
 			freq_at_range_k := mod_low_freq + mod_freq_range_width * float64(k)+ mod_freq_step * index_at_range_k 
-			if symbol_frame_id == 0 {
-				fmt.Printf("%.2f+%.2f*%.2f+%.2f*%.2f=%.2f ", mod_low_freq, mod_freq_range_width, float64(k), mod_freq_step, index_at_range_k, freq_at_range_k)
-			}
+			// if symbol_frame_id == 0 {
+				// fmt.Printf("%.2f+%.2f*%.2f+%.2f*%.2f=%.2f ", mod_low_freq, mod_freq_range_width, float64(k), mod_freq_step, index_at_range_k, freq_at_range_k)
+			// fmt.Printf("%d:%.2f ", sym, freq_at_range_k)
+			// }
 			cur_f += math.Sin(freq_at_range_k * phase)
 		}
 		if symbol_frame_id == 0 {
 			fmt.Printf("] ")
 		}
 		bs := math.Float32bits(float32(cur_f))
+		w.WriteString(fmt.Sprintf("%f, ", cur_f))
 
 		buf[buf_offset] = byte(bs)
 		buf[buf_offset+1] = byte(bs>>8)
@@ -194,7 +209,7 @@ func calculate_hash(msg BitString) *big.Int {
 // 	copy(msg[0:length], _msg)
 // 	for i := 0; i < length; i++ {
 // 		crc <<= 1
-// 		if msg[i] == 1 {
+// 		if msg[i] == 1 {0 0 0 91 17 86 122 102
 // 			crc |= 1
 // 		  // CRC-16/AUG-CCITT
 // 			msg[i] ^= 1
@@ -274,7 +289,7 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	}
 	bit_per_sym_b := sym_size_b.BitLen() - 1
 	fmt.Printf("Rounding down the symbol set from %d(%d) to contain 2^%d symbols for simplicity\n", sym_size, sym_size_b, bit_per_sym_b)
-	// os.Exit(0)
+	os.Exit(0)
 
 	fmt.Printf("Trying to modulate %v\n", message)
 	modulo := len(message) % bit_per_sym
