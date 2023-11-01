@@ -19,13 +19,13 @@ import (
 
 
 const mod_duration_gap = 20 * time.Millisecond
-const mod_duration = 500 * time.Millisecond
+const mod_duration = 800 * time.Millisecond
 const mod_low_freq = 1000.0
 const mod_high_freq = 17000.0
 const mod_width = mod_high_freq - mod_low_freq
-const mod_freq_step = 50.0
+const mod_freq_step = 100.0
 // const mod_freq_range_num = 80
-const mod_freq_range_num = 2
+const mod_freq_range_num = 4
 const mod_freq_range_width = mod_width / mod_freq_range_num
 var mod_state_num *big.Int
 var sym_size *big.Int
@@ -71,17 +71,17 @@ func encode_int(_l int64) BitString {
 }
 
 const sampleRate = 44100.0
-const preamble_duration = 500 * time.Millisecond
+const preamble_duration = 800 * time.Millisecond
 // in general we want higher preamble freqency to distinguish from the noises
-const preamble_start_freq = 100.0
-const preamble_final_freq = 500.0
+const preamble_start_freq = 1000.0
+const preamble_final_freq = 5000.0
 
-const slice_duration = 15 * time.Millisecond
-const slice_inner_duration = 3 * time.Millisecond
-const slice_num = 8
+const slice_duration = 40 * time.Millisecond
+const slice_inner_duration = 10 * time.Millisecond
+const slice_num = 10
 // the issue with this is: the bigger this is we can tollerant weaker signals but the possibility 
 // of misidentification increases
-const cutoff_variance_preamble = 0.07
+const cutoff_variance_preamble = 0.1
 
 // const self_correction_after_sym = 8 // do a self correction every 8 symbols
 
