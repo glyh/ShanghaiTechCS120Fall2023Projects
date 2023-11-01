@@ -22,13 +22,13 @@ const mod_low_freq = 1000.0
 const mod_high_freq = 17000.0
 const mod_width = mod_high_freq - mod_low_freq
 const mod_freq_step = 50.0
-// const mod_freq_range_num = 80
-const mod_freq_range_num = 2
+const mod_freq_range_num = 80
+// const mod_freq_range_num = 2
 const mod_freq_range_width = mod_width / mod_freq_range_num
 var freq_diff_lower_bound float64
 
-var mod_state_num uint64
-var sym_size uint64
+var mod_state_num *big.Int
+var sym_size *big.Int
 
 var bit_per_sym int
 
@@ -102,7 +102,7 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 	// number of frame per single symbol
 	frame_per_sym := int(math.Ceil(float64(c.sampleRate) * mod_duration.Seconds()))
 
-	mod_state_num_b := big.NewInt(int64(mod_state_num))
+	// mod_state_num_b := big.NewInt(int64(mod_state_num))
 
 	for buf_offset := 0; buf_offset < len(buf); buf_offset += 4 {
 		symbol_sent := c.offset / frame_per_sym
@@ -120,7 +120,7 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 		cur_f := 0.0
 		index_at_range_k_b := big.NewInt(0)
 		for k := 0; k < mod_freq_range_num; k++ {
-			sym.DivMod(sym, mod_state_num_b, index_at_range_k_b)
+			sym.DivMod(sym, mod_state_num, index_at_range_k_b)
 			index_at_range_k, _ := index_at_range_k_b.Float64()
 			freq_at_range_k := mod_low_freq + mod_freq_range_width * float64(k)+ mod_freq_step * index_at_range_k 
 			// if symbol_frame_id == 0 {
@@ -266,14 +266,13 @@ func convert_base(message BitString, bit_per_sym int) BitString {
 func modulate(c *oto.Context, message BitString, sampleRate int) {
 
 	f := mod_freq_range_width / mod_freq_step
-	mod_state_num = uint64(f)
-	sym_size = 1
+	mod_state_num = big.NewInt(int64(f))
+	sym_size = big.NewInt(1)
 	for i := 0; i < mod_freq_range_num; i++ {
-		sym_size = sym_size * mod_state_num
-		// fmt.Printf("%d.", sym_size)
+		sym_size.Mul(sym_size, mod_state_num)
 	}
-	// fmt.Println("")
-	bit_per_sym = int(math.Log2(float64(sym_size))) - 1
+	bit_per_sym = sym_size.BitLen() - 1
+
 	freq_diff_lower_bound = 1.0 / mod_duration.Seconds()
 	if freq_diff_lower_bound > mod_freq_step {
 		fmt.Printf("Frequency difference(%f) for modulation is too small compare to the lower limit %f\n", mod_freq_step, freq_diff_lower_bound)
@@ -283,13 +282,7 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	fmt.Printf("We're spliting frequency domain [%f %f] into %d pieces, where each piece is of width %f\n", mod_low_freq, mod_high_freq, mod_freq_range_num, mod_freq_range_width)
 	fmt.Printf("Inside these pieces, there's %d states where each state is %f Hz apart\n", mod_state_num, mod_freq_step)
 
-	sym_size_b := big.NewInt(1)
-	mod_state_num_b := big.NewInt(int64(mod_state_num))
-	for i := 0; i < mod_freq_range_num; i++ {
-		sym_size_b.Mul(sym_size_b, mod_state_num_b)
-	}
-	bit_per_sym_b := sym_size_b.BitLen() - 1
-	fmt.Printf("Rounding down the symbol set from %d(%d) to contain 2^%d symbols for simplicity\n", sym_size, sym_size_b, bit_per_sym_b)
+	fmt.Printf("Rounding down the symbol set from %d to contain 2^%d symbols for simplicity\n", sym_size, bit_per_sym)
 	// os.Exit(0)
 
 	fmt.Printf("Trying to modulate %v\n", message)
