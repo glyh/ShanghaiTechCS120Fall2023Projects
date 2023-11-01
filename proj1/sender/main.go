@@ -73,7 +73,8 @@ func main() {
 	chk(err)
 	<-ready
 
-	msg := random_bit_string_of_length(10000)
+	// msg := random_bit_string_of_length(10000)
+	msg := read_bitstring("0010")
 	modulate(c, msg, opts.SampleRate)
 }
 
@@ -105,6 +106,9 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 			// index_at_range_k := (sym >> (3 * k)) & ((1 << 3) - 1)
 			index_at_range_k := sym % mod_state_num
 			freq_at_range_k := float64(index_at_range_k * mod_freq_step + mod_low_freq + mod_freq_step * uint64(k))
+			if symbol_frame_id == 0 {
+				fmt.Printf("(%f) ", freq_at_range_k)
+			}
 			cur_f += math.Sin(freq_at_range_k * phase)
 			sym /= mod_state_num
 		}
@@ -202,7 +206,6 @@ func pad_bitstring(length int, msg BitString) BitString {
 func convert_base(message BitString, bit_per_sym int) BitString {
 	out := BitString{}
 	for i := uint64(0); i < uint64(len(message)); i += uint64(bit_per_sym) {
-		fmt.Printf("[%d]:[%d!]", i, bit_per_sym)
 		cur := uint64(0)
 		for j := 0; j < bit_per_sym; j++ {
 			// fmt.Printf("(%d)", j)
