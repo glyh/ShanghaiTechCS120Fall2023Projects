@@ -23,7 +23,7 @@ const mod_duration = 800 * time.Millisecond
 const mod_low_freq = 1000.0
 const mod_high_freq = 17000.0
 const mod_width = mod_high_freq - mod_low_freq
-const mod_freq_step = 200.0
+const mod_freq_step = 100.0
 // const mod_freq_range_num = 80
 const mod_freq_range_num = 10
 const mod_freq_range_width = mod_width / mod_freq_range_num
@@ -150,13 +150,13 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 			// fmt.Printf("hello")
 			if symbol_frame_id == 0 {
 				// w.WriteString(fmt.Sprintf("%f ", cur_f))
-				fmt.Printf("%.0f:%.2f ", index_at_range_k, freq_at_range_k)
+				fmt.Printf("%.0f:%.2f [%.2f %.2f]", index_at_range_k, freq_at_range_k, cur_range_start_freq, cur_range_start_freq + mod_freq_range_width)
 			}
 			cur_range_start_freq += mod_freq_range_width
 		}
 		if symbol_frame_id == 0 {
 				// w.WriteString("\n")
-			fmt.Printf("] ")
+			fmt.Printf("]\n")
 		}
 		bs := math.Float32bits(float32(cur_f))
 

@@ -22,7 +22,7 @@ const mod_duration = 800 * time.Millisecond
 const mod_low_freq = 1000.0
 const mod_high_freq = 17000.0
 const mod_width = mod_high_freq - mod_low_freq
-const mod_freq_step = 140.0
+const mod_freq_step = 200.0
 const mod_freq_range_num = 10
 const mod_freq_range_width = mod_width / mod_freq_range_num
 const gap_freq = mod_freq_step / 2
@@ -85,7 +85,7 @@ const slice_inner_duration = 10 * time.Millisecond
 const slice_num = 10
 // the issue with this is: the bigger this is we can tollerant weaker signals but the possibility 
 // of misidentification increases
-const cutoff_variance_preamble = 0.1
+const cutoff_variance_preamble = 0.5
 
 // const self_correction_after_sym = 8 // do a self correction every 8 symbols
 
@@ -228,6 +228,7 @@ func main() {
 			bits_expected := frameCountAllEffective / modulated_width
 			left_over := frameCountAllEffective % modulated_width
 			gap_width := int(math.Ceil(mod_duration_gap.Seconds() * sampleRate))
+			tmp := make([]float64, modulated_width * 3)
 			for ; bits_read < bits_expected; bits_read++ {
 				// leave slice_width empty so we're more likely get a good result from fourier transform
 				to_analyze := rb.CopyStrideRight(gap_width + left_over + (bits_expected - bits_read - 1) * modulated_width, modulated_width - 2 * gap_width)
@@ -250,7 +251,11 @@ func main() {
 					// 	}
 					// }
 					// fmt.Println("")
-					max_energy_freq := sampleRate * float64(arg_max(energy_cur[i_start:i_end]) + i_start) / float64(L)
+					for i := i_start; i < i_end; i++ {
+						ratio := float64(i - i_start) / float64(i_end - i_start)
+						tmp[i] = energy_cur[i] - ((1 - ratio) * energy_cur[i_start] + ratio * energy_cur[i_end])
+					}
+					max_energy_freq := sampleRate * float64(arg_max(tmp[i_start:i_end]) + i_start) / float64(L)
 					// max_energy_freq = start_freq + part * 20
 					part := int(math.Round((max_energy_freq - (start_freq + gap_freq)) / mod_freq_step))
 					// fmt.Printf("In [%f, %f] we have max frequency of %f, interpreted as %d\n", start_freq, end_freq, max_energy_freq, part)
