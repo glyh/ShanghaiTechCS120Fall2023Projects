@@ -4,8 +4,7 @@
 
 package main
 
-import (
-	"slices"
+import ( "slices"
 	"time"
 
 	"github.com/ebitengine/oto/v3"
@@ -17,12 +16,12 @@ import (
 	"os"
 )
 
-const mod_duration = 400 * time.Millisecond
-const mod_low_freq = 500.0
+const mod_duration = 1 * time.Second
+const mod_low_freq = 1000.0
 const mod_high_freq = 17000.0
 const mod_width = mod_high_freq - mod_low_freq
-const mod_freq_step = 50.0
-const mod_freq_range_num = 16
+const mod_freq_step = 100.0
+const mod_freq_range_num = 8
 const mod_freq_range_width = mod_width / mod_freq_range_num
 var freq_diff_lower_bound float64
 
@@ -93,7 +92,8 @@ func main() {
 	chk(err)
 	<-ready
 
-	msg := random_bit_string_of_length(10000)
+	// msg := random_bit_string_of_length(10000)
+	msg := read_bitstring("0")
 	modulate(c, msg, opts.SampleRate)
 }
 
@@ -119,15 +119,24 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 		if symbol_frame_id == 0 {
 			fmt.Printf("%d ", sym)
 		}
-		t := float64(symbol_frame_id) / float64(c.sampleRate)
+		phase := 2 * math.Pi * float64(symbol_frame_id) / float64(c.sampleRate)
 		cur_f := 0.0
-		for k := 0; k < mod_freq_range_num; k++ {
-			sym_state_at_range_k_i := big.NewInt(0)
+		sym_state_at_range_k_i := big.NewInt(0)
 
+		if symbol_frame_id == 0 {
+			fmt.Printf("[")
+		}
+		for k := 0; k < mod_freq_range_num; k++ {
 			sym.DivMod(sym, mod_state_num, sym_state_at_range_k_i)
 			sym_state_at_range_k, _ := sym_state_at_range_k_i.Float64()
 			freq_at_range_k := float64(float32(sym_state_at_range_k) * mod_freq_step + mod_low_freq + mod_freq_range_width * float32(k))
-			cur_f += math.Sin(2 * math.Pi * freq_at_range_k * t)
+			if symbol_frame_id == 0 {
+				fmt.Printf("%f ", freq_at_range_k)
+			}
+			cur_f += math.Sin(freq_at_range_k * phase)
+		}
+		if symbol_frame_id == 0 {
+			fmt.Printf("] ")
 		}
 		// c.sym_mod[sym][symbol_frame_id]
 		bs := math.Float32bits(float32(cur_f))
@@ -175,10 +184,11 @@ func encode_int(_l int64) BitString {
 	mask := big.NewInt(1)
 	l := big.NewInt(_l)
 	mask = mask.Lsh(mask, uint(bit_per_sym))
+	mask = mask.Sub(mask, big.NewInt(1))
 	// mask := (int64(1) << bit_per_sym) - 1
 	for !(l.IsInt64() && l.Int64() == 0)  {
 		last_bit := big.NewInt(0)
-		last_bit = l.And(l, mask)
+		last_bit.And(l, mask)
 		l.Rsh(l, uint(bit_per_sym))
 		output = append(output, last_bit)
 	}
@@ -281,6 +291,15 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 	output = append(output, message...)
 
 	fmt.Printf("Got whole packet %v\n", output)
+
+	// testing signal 
+	{
+		output = make([]*big.Int, 5)
+		for b, _ := range(output) {
+			output[b] = big.NewInt(rand.Int63())
+		}
+	}
+
 	// output = do_4b5b(output)
 	// fmt.Printf("4B5B encoded as %v\n", output)
 
@@ -290,10 +309,6 @@ func modulate(c *oto.Context, message BitString, sampleRate int) {
 
 	fmt.Println("\nMessage successfully modulated and played")
 } 
-
-func demodulate(message []float64) BitString {
-	return BitString{}
-}
 
 func chk(err error) {
 	if err != nil {
