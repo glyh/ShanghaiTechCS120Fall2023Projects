@@ -5,7 +5,7 @@
 package main
 
 import (
-	// "bufio"
+	"bufio"
 	"slices" 
 	"time"
 
@@ -16,16 +16,16 @@ import (
 	"math/rand"
 	"os"
 
-	"io/ioutil"
-    "log"
+	//"io/ioutil"
+    //"log"
 )
-const mod_duration = 800 * time.Millisecond
-const mod_low_freq = 1000.0
-const mod_high_freq = 17000.0
+const mod_duration = 100 * time.Millisecond
+const mod_low_freq = 700.0
+const mod_high_freq = 18000.0
 const mod_width = mod_high_freq - mod_low_freq
-const mod_freq_step = 100.0
+const mod_freq_step = 60.0
 // const mod_freq_range_num = 80
-const mod_freq_range_num = 10
+const mod_freq_range_num = 25
 const mod_freq_range_width = mod_width / mod_freq_range_num
 var freq_diff_lower_bound float64
 
@@ -36,7 +36,7 @@ var bit_per_sym int
 
 // the finest difference we can tell with sample rate fs is fs/L where L is the length of the signal(L = t * fs), thus to differentiate by 20hz, 1/t = 20hz, t = 1/20s = 500ms
 
-const sleep_duration = 500 * time.Millisecond
+const sleep_duration = 300 * time.Millisecond
 const preamble_duration = 800 * time.Millisecond
 const preamble_start_freq = 1000.0
 const preamble_final_freq = 5000.0
@@ -45,28 +45,6 @@ const len_length = 2
 
 type BitString = []*big.Int
 
-func read_bitstring(s string) BitString {
-	out := BitString{}
-	for _, v := range(s) { 
-		bit := int64(0)
-		if v == '1' {
-			bit = 1
-			out = append(out, big.NewInt(bit))
-		} else if v == '0' {
-			bit = 0
-			out = append(out, big.NewInt(bit))
-		}
-	}
-	return out
-}
-
-func random_bit_string_of_length(l int) BitString {
-	out := make(BitString, l)
-	for i := 0; i < len(out); i++ {
-		out[i] = big.NewInt(rand.Int63n(2))
-	}
-	return out
-}
 
 // var w *bufio.Writer
 
@@ -91,22 +69,56 @@ func main() {
 	// w = bufio.NewWriter(file)
 	// defer w.Flush()
 
-	// msg := random_bit_string_of_length(10000)
+	msg := random_bit_string_of_length(10000)
+	file, err := os.Create("INPUT_DUMMY.txt")
+	chk(err)
+	defer file.Close()
+	writer := bufio.NewWriter(file)
+	defer writer.Flush()
+	for _, v := range(msg) {
+		if v.Int64() == 0 {
+			writer.WriteString("0")
+		} else {
+			writer.WriteString("1")
+		}
+	}
 	// msg := read_bitstring("001000110101101111010111000010101010110101010101101010100101101001111111111111010110101010010101010110101011010101010010000101010100101110100101011010101001000101001111111111111110101010101100110")
 	// msg := read_bitstring("001000110101101111010111000010")
-	filePath := "INPUT.txt"
+	//filePath := "INPUT.txt"
 	// Read the file's contents
-    content, err := ioutil.ReadFile(filePath)
-    if err != nil {
-        log.Fatal(err)
-    }
+    //content, err := ioutil.ReadFile(filePath)
+    // chk(err)
 
     // Convert the content to a string and print it
-    msg1 := string(content)
-	msg := read_bitstring(msg1)
+    //msg1 := string(content)
+	//msg := read_bitstring(msg1)
     // fmt.Println(fileContent)
 	modulate(c, msg, opts.SampleRate)
 }
+
+func read_bitstring(s string) BitString {
+	out := BitString{}
+	for _, v := range(s) { 
+		bit := int64(0)
+		if v == '1' {
+			bit = 1
+			out = append(out, big.NewInt(bit))
+		} else if v == '0' {
+			bit = 0
+			out = append(out, big.NewInt(bit))
+		}
+	}
+	return out
+}
+
+func random_bit_string_of_length(l int) BitString {
+	out := make(BitString, l)
+	for i := 0; i < len(out); i++ {
+		out[i] = big.NewInt(rand.Int63n(2))
+	}
+	return out
+}
+
 
 type DataSig struct {
 	data BitString
@@ -143,14 +155,17 @@ func (c *DataSig) Read(buf []byte) (int, error) {
 		cur_range_start_freq := mod_low_freq
 		for k := 0; k < mod_freq_range_num; k++ {
 			sym.DivMod(sym, mod_state_num, index_at_range_k_b)
+			//fmt.Prinf("/ %d -> (%d, %d)\n", mod_state_num, sym, index_at_range_k)
 			index_at_range_k, _ := index_at_range_k_b.Float64()
 			// freq_at_range_k := mod_low_freq + mod_freq_range_width * float64(k)+ mod_freq_step * index_at_range_k 
 			freq_at_range_k := cur_range_start_freq + mod_freq_step * index_at_range_k
+			
 			cur_f += math.Sin(freq_at_range_k * phase)
 			// fmt.Printf("hello")
 			if symbol_frame_id == 0 {
 				// w.WriteString(fmt.Sprintf("%f ", cur_f))
-				fmt.Printf("%.0f:%.2f [%.2f %.2f]", index_at_range_k, freq_at_range_k, cur_range_start_freq, cur_range_start_freq + mod_freq_range_width)
+				//fmt.Printf("%.0f:%.2f ", index_at_range_k, freq_at_range_k)
+				//fmt.Printf("[%f = %f + %f * %f]", freq_at_range_k, cur_range_start_freq, mod_freq_step, index_at_range_k)
 			}
 			cur_range_start_freq += mod_freq_range_width
 		}
