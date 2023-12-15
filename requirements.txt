@@ -1,3 +1,2 @@
 numpy == 1.26.1
 sounddevice == 0.4.6
-faster-fifo == 1.4.5
