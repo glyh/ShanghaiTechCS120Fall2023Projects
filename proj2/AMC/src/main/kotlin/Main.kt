@@ -59,6 +59,6 @@ suspend fun main(args: Array<String>) {
     if (args[0] == "0") {
         dummy()
     } else if (args[0] == "1") {
-        send(arrayOf())
+        send(listOf(128.toByte(), 32, 93))
     }
 }
