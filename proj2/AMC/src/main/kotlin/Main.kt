@@ -1,16 +1,7 @@
 import java.nio.ByteBuffer
-import java.nio.channels.Channel
 import javax.sound.sampled.*
 import kotlin.math.sin
 import kotlin.system.exitProcess
-
-fun send(a: Array<Byte>) {
-
-}
-
-fun receive(): Array<Byte> {
-    return arrayOf()
-}
 
 fun dummy() {
     val SAMPLING_RATE = 44100.0f
@@ -53,10 +44,6 @@ fun dummy() {
     line.close()
 }
 
-fun preamble(c: Channel) {
-
-
-}
 fun main(args: Array<String>) {
     if (args.size != 1) {
         print("""
