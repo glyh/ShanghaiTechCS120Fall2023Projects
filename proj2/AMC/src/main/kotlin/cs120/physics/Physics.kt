@@ -133,20 +133,20 @@ val sleepDuration = 500.milliseconds
 
 suspend fun send(a: List<Byte>) {
     val startSig = Channel<Boolean>()
-    val afterSleep = Channel<Boolean>()
     val afterPreamble = Channel<Boolean>()
+    val afterSleep = Channel<Boolean>()
     val afterData = Channel<Boolean>()
     coroutineScope {
         launch {
             startSig.send(true)
         }
         launch {
-            sleep(sleepDuration, startSig, afterSleep)
+            preamble(startSig, afterPreamble)
         }
         launch {
-            preamble(afterSleep, afterPreamble)
+            sleep(sleepDuration, afterPreamble, afterSleep)
         }
-        sendData(a, afterPreamble, afterData)
+        sendData(a, afterSleep, afterData)
     }
 }
 
@@ -230,24 +230,26 @@ fun receive(): Array<Byte> {
     val sliceBuf = ByteBuffer.allocate(bytesPerSlice)
     var frameCountAll = 0
 
-    var isIdle = true
-
+    // Idling
     while (true) {
-        if (isIdle) {
-            stream.read(sliceBuf.array(), 0, bytesPerSlice)
-            for(i in 0 until bytesPerSlice step Short.SIZE_BYTES) {
-                buf.put(sliceBuf.getShort(i))
-                frameCountAll += 1
-            }
-            if (frameCountAll >= preambleWidth) {
-                val (ok, frameCountNew) = tryDetectPreamble(buf)
-                if(ok) {
-                    isIdle = false
-                    frameCountAll = frameCountNew
-                }
-            }
-        } else {
-            // TODO
-        }
+       stream.read(sliceBuf.array(), 0, bytesPerSlice)
+       for(i in 0 until bytesPerSlice step Short.SIZE_BYTES) {
+           buf.put(sliceBuf.getShort(i))
+           frameCountAll += 1
+       }
+       if (frameCountAll >= preambleWidth) {
+           val (ok, frameCountAllNew) = tryDetectPreamble(buf)
+           if (ok) {
+               frameCountAll = frameCountAllNew
+               break
+           }
+       }
     }
+
+    // Receiving Data
+    val sleepFrames = ceil(sleepDuration.toDouble(DurationUnit.SECONDS) * fs).toInt()
+    stream.skip(((sleepFrames - frameCountAll) * Short.SIZE_BYTES).toLong())
+    frameCountAll = sleepFrames
+
+    // TODO
 }

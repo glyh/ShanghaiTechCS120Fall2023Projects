@@ -185,7 +185,7 @@ func main() {
 		if is_idle {
 			slice_width := int(math.Ceil(slice_duration.Seconds() * sampleRate))
 			slice_inner_width := int(math.Ceil(slice_inner_duration.Seconds() * sampleRate))
-			// check whether we can start to work, the following conditions need to met: 
+			// Check whether we can start to work, the following conditions need to met: 
 			// 1. we have enough samples to accept a preamble
 			// 2. in the last slice the peak frequency is "around" 8000Hz
 			// 3. the peak frequency in the last slice_num slices follows the characteristic of the chirp signal
@@ -267,12 +267,12 @@ func main() {
 				}	
 				// fmt.Printf("]\n")
 
-				// // let Fs * i/L = zero_freq, then i = zero_freq / Fs * L
+				// let Fs * i/L = zero_freq, then i = zero_freq / Fs * L
 				// max_energy_freq := sampleRate * float64(arg_max(energy_cur)) / float64(L)
-				// // say max_energy_freq = ratio * modulate_low_freq + (1 - ratio) * modulate_high_freq
-				// // then ratio = (modulate_high_freq - max_energy_freq) / (modulate_high_freq - modulate_low_freq)
+				// say max_energy_freq = ratio * modulate_low_freq + (1 - ratio) * modulate_high_freq
+				// then ratio = (modulate_high_freq - max_energy_freq) / (modulate_high_freq - modulate_low_freq)
 				// ratio := (modulate_high_freq - max_energy_freq) / (modulate_high_freq - modulate_low_freq)
-				// // we know that ratio = i / sym_num
+				// we know that ratio = i / sym_num
 				//
 				// sym := int(math.Round(ratio * sym_num))
 				received = append(received, sym)
