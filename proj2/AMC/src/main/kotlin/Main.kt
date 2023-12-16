@@ -1,14 +1,13 @@
 import java.nio.ByteBuffer
 import javax.sound.sampled.*
 import kotlin.math.sin
-
-fun main(args: Array<String>) {
+import kotlin.system.exitProcess
+fun dummy() {
     val SAMPLING_RATE = 44100.0f
     val SAMPLE_SIZE = Short.SIZE_BYTES
-    // print("${SAMPLE_SIZE}!\n")
     val fFreq = 440.0
 
-    val format = AudioFormat(SAMPLING_RATE, 16, 1, true, true)
+    val format = AudioFormat(SAMPLING_RATE, SAMPLE_SIZE * 8, 1, true, true)
     val info = DataLine.Info(SourceDataLine::class.java, format)
     if (!AudioSystem.isLineSupported(info)) {
         throw IllegalArgumentException("Audio line not supported")
@@ -19,7 +18,6 @@ fun main(args: Array<String>) {
     line.start()
 
     val cBuf = ByteBuffer.allocate(line.bufferSize)
-    // print("${cBuf.capacity()}!\n")
     var ctSampleTotal = SAMPLING_RATE * 5
 
     var fCyclePosition = 0.0
@@ -27,11 +25,9 @@ fun main(args: Array<String>) {
         val fCycleInc = fFreq / SAMPLING_RATE
         cBuf.clear()
         val ctSampleThisPass = line.available() / SAMPLE_SIZE
-        // print("${ctSampleThisPass}QwQ\n")
         for(i in 0 until ctSampleThisPass){
             val out = Short.MAX_VALUE * sin(2 * Math.PI * fCyclePosition)
             cBuf.putShort(out.toInt().toShort())
-            // print("${cBuf.position()}:\n")
             fCyclePosition += fCycleInc
             if (fCyclePosition > 1) {
                 fCyclePosition -= 1
@@ -45,4 +41,20 @@ fun main(args: Array<String>) {
     }
     line.drain()
     line.close()
+}
+fun main(args: Array<String>) {
+    if (args.size != 1) {
+        print("""
+            |Usage: [prog] 0/1
+            |0: Test
+            |1: Send
+            |2: Receive
+        """.trimMargin())
+        exitProcess(0)
+    }
+    if (args[0] == "0") {
+        dummy()
+    } else {
+        print("TODO")
+    }
 }
