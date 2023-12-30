@@ -27,7 +27,7 @@ class MACLayer {
     private val TIMEOUT: Long = 5000
     private var rxBuffer: ByteArray = byteArrayOf()
 
-    
+
 
 //    fun handleState(state: currentState){
 //        when(currentState){
