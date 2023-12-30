@@ -240,28 +240,6 @@ func calculate_hash(msg BitString) *big.Int {
 	return ret
 }
 
-// const crc_length = 16
-// func calculate_crc(_msg BitString) BitString {
-// 	// append crc_length 0s after the end of the message
-// 	length := len(_msg)
-// 	crc := 0
-// 	msg := make(BitString, length + crc_length)
-// 	copy(msg[0:length], _msg)
-// 	for i := 0; i < length; i++ {
-// 		crc <<= 1
-// 		if msg[i] == 1 {0 0 0 91 17 86 122 102
-// 			crc |= 1
-// 		  // CRC-16/AUG-CCITT
-// 			msg[i] ^= 1
-// 			crc_coeffs := []{12, 5, 0}
-// 			for _, offset := range(crc_coeffs) {
-// 				msg[i+crc_length-offset] ^= 1
-// 			}
-// 		}
-// 	}
-// 	return pad_bitstring(crc_length, encode_int(crc))
-// }
-
 func pad_bitstring(length int, msg BitString) BitString {
 	if len(msg) > length {
 		panic("input bitstring too long")

@@ -3,6 +3,8 @@ import javax.sound.sampled.*
 import kotlin.math.sin
 import kotlin.system.exitProcess
 
+import cs120.physics.send
+
 fun dummy() {
     val SAMPLING_RATE = 44100.0f
     val SAMPLE_SIZE = Short.SIZE_BYTES
@@ -44,7 +46,7 @@ fun dummy() {
     line.close()
 }
 
-fun main(args: Array<String>) {
+suspend fun main(args: Array<String>) {
     if (args.size != 1) {
         print("""
             |Usage: [prog] 0/1
@@ -56,7 +58,7 @@ fun main(args: Array<String>) {
     }
     if (args[0] == "0") {
         dummy()
-    } else {
-        print("TODO")
+    } else if (args[0] == "1") {
+        send(listOf(128.toByte(), 32, 93))
     }
 }
